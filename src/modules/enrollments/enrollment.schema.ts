@@ -55,7 +55,14 @@ export const createEnrollmentSchema = z.object({
 export type CreateEnrollmentInput = z.infer<typeof createEnrollmentSchema>;
 
 export const validateDocumentsSchema = z.object({
-  aprobado: booleanPreprocessor(true),
+  aprobado: z.preprocess((value) => {
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true' || normalized === '1') return true;
+      if (normalized === 'false' || normalized === '0') return false;
+    }
+    return value;
+  }, z.boolean().default(true)),
   observaciones_administracion: z.string().optional().nullable(),
 });
 

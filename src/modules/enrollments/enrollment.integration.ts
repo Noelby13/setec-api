@@ -551,6 +551,54 @@ async function main() {
     checks.push(
       "simultaneous receipt approval/rejection has one decision and coherent state; own approval/quorum required; finished accounts cannot reactivate",
     );
+    integrationStage = "explicit documentary decision validation";
+    const invalidFixture = await fixture();
+    for (const value of ["unexpected", "", null, 1, 0, {}, []]) {
+      const before = await snapshot();
+      const result = await request(
+        doc(invalidFixture.e),
+        "PATCH",
+        { aprobado: value },
+        tokens.issuer,
+      );
+      assert.equal(result.status, 400, JSON.stringify(result.body));
+      assert.ok(
+        result.body.errors.some((error: any) => error.field === "aprobado"),
+      );
+      assert.equal(await snapshot(), before);
+    }
+    for (const [value, expected] of [
+      [false, "DOCUMENTACION_OBSERVADA"],
+      ["false", "DOCUMENTACION_OBSERVADA"],
+      ["0", "DOCUMENTACION_OBSERVADA"],
+      [true, "PENDIENTE_PAGO"],
+      ["true", "PENDIENTE_PAGO"],
+      ["1", "PENDIENTE_PAGO"],
+      [undefined, "PENDIENTE_PAGO"],
+      [" TRUE ", "PENDIENTE_PAGO"],
+    ]) {
+      const f = await fixture();
+      const result = await request(
+        doc(f.e),
+        "PATCH",
+        { aprobado: value },
+        tokens.issuer,
+      );
+      assert.equal(result.status, 200, JSON.stringify(result.body));
+      assert.equal(result.body.data.estado, expected);
+      const stored = await one(
+        "SELECT cupos_actuales_verificados,cobro_habilitado FROM cohortes_apertura WHERE id=$1",
+        [f.c.id],
+      );
+      assert.equal(
+        stored.cupos_actuales_verificados,
+        expected === "PENDIENTE_PAGO" ? 1 : 0,
+      );
+      assert.equal(stored.cobro_habilitado, expected === "PENDIENTE_PAGO");
+    }
+    checks.push(
+      "malformed documentary values return400 without changes; valid booleans/multipart strings and omission preserve existing outcomes",
+    );
     console.log(JSON.stringify({ complete: true, checks }, null, 2));
   } finally {
     try {

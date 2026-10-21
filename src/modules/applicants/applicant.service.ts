@@ -470,6 +470,10 @@ export class ApplicantService {
       porcentaje_creditos_investigacion: input.porcentaje_creditos_investigacion,
     };
 
+    // Changed evidence cannot retain an approval of the previous document.
+    if (Object.values(updateData).some(value => value !== undefined)) {
+      updateData.estado_validacion = EstadoValidacionTitulo.PENDIENTE;
+    }
     const updated = await ApplicantDao.updateAcademicDegree(degreeId, updateData);
     if (!updated) {
       throw new AppError('Error al actualizar el título académico', 500);

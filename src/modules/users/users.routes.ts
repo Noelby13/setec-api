@@ -13,7 +13,7 @@ usersRouter.get('/roles', async (req, res, next) => {
 usersRouter.get('/', validateSchema({ query: userSearchSchema }), async (req, res, next) => {
   try {
     const query = userSearchSchema.parse(req.query);
-    res.json({ success: true, data: await UsersService.list(query.search, query.page, query.limit) });
+    res.json({ success: true, data: await UsersService.list(query.search, query.page, query.limit, query.rol) });
   } catch (error) { next(error); }
 });
 usersRouter.post('/', validateSchema(createManagedUserSchema), async (req, res, next) => {

@@ -30,8 +30,8 @@ export class UsersService {
     return role;
   }
 
-  static async list(search: string, page: number, limit: number) {
-    const result = await UsersDao.list(search, page, limit);
+  static async list(search: string, page: number, limit: number, role?: string) {
+    const result = await UsersDao.list(search, page, limit, role);
     return { ...result, items: result.items.map(publicUser), page, limit };
   }
 

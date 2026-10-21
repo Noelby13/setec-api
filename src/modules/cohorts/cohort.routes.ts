@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { teachingRouter } from './teaching.routes';
 import { CohortController } from './cohort.controller';
 import { requireAuth, requirePermission } from '../../middlewares/auth.middleware';
 import { validateSchema } from '../../middlewares/validate.middleware';
@@ -14,6 +15,7 @@ import {
 } from './cohort.schema';
 
 export const cohortsRouter = Router();
+cohortsRouter.use('/teaching', teachingRouter);
 
 // Upload middleware for cohort exception documents
 const uploadCohortes = createUploadMiddleware('cohortes');

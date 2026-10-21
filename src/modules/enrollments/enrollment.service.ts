@@ -54,11 +54,20 @@ export class EnrollmentService {
   static async createEnrollment(
     data: CreateEnrollmentInput,
     uploadedFiles?: UploadedEnrollmentFiles,
-    currentUserId?: string
+    currentUserId?: string,
+    canManageApplicants = false
   ): Promise<InscripcionDetailRecord> {
     return await withTransaction(async (client) => {
       // 1. Resolve aspirante_id
       let aspiranteId = data.aspirante_id;
+      if (currentUserId && !canManageApplicants) {
+        const ownApplicant = await EnrollmentDao.findAspiranteByUserId(currentUserId, client);
+        if (!ownApplicant) throw new AppError('Complete su perfil de aspirante antes de solicitar inscripción', 400);
+        if (aspiranteId && aspiranteId !== ownApplicant.id) {
+          throw new AppError('No puede solicitar inscripción para otro aspirante', 403);
+        }
+        aspiranteId = ownApplicant.id;
+      }
       if (!aspiranteId) {
         if (!currentUserId) {
           throw new AppError('Debe especificar el aspirante_id o estar autenticado', 400);
@@ -84,13 +93,13 @@ export class EnrollmentService {
       }
 
       // 3. Retrieve Cohort and its Academic Program
-      const cohorte = await EnrollmentDao.getCohorteWithProgram(data.cohorte_id, client);
+      const cohorte = await EnrollmentDao.getCohorteWithProgramForUpdate(data.cohorte_id, client);
       if (!cohorte) {
         throw new AppError('La cohorte académica especificada no existe', 404);
       }
 
       // Check if cohort allows new enrollments
-      if (['CANCELADA', 'FINALIZADA_PENDIENTE_EVAL', 'EVALUADA_SETEC'].includes(cohorte.estado_cohorte)) {
+      if (cohorte.estado_cohorte !== 'INSCRIPCION_ABIERTA') {
         throw new AppError(
           `No es posible inscribirse en una cohorte en estado ${cohorte.estado_cohorte}`,
           400
@@ -599,7 +608,8 @@ export class EnrollmentService {
   }
 
   static async getMyEnrollments(
-    userId: string
+    userId: string,
+    pagination: { page: number; limit: number } = { page: 1, limit: 100 }
   ): Promise<{ data: InscripcionDetailRecord[]; total: number }> {
     const aspirante = await EnrollmentDao.findAspiranteByUserId(userId);
     if (!aspirante) {
@@ -608,7 +618,8 @@ export class EnrollmentService {
 
     return await EnrollmentDao.listInscripciones({
       aspirante_id: aspirante.id,
-      limit: 100,
+      page: pagination.page,
+      limit: pagination.limit,
     });
   }
 

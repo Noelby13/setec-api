@@ -1,3 +1,4 @@
+import { protectUploads } from './middlewares/private-upload.middleware';
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -31,7 +32,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static uploads
-app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
+app.use('/uploads', protectUploads, express.static(path.resolve(process.cwd(), 'uploads')));
 
 // Swagger / OpenAPI Documentation
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, swaggerOptions));

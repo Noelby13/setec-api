@@ -131,6 +131,7 @@ export const convalidationIdParamSchema = z.object({
 });
 
 export const listEnrollmentsQuerySchema = z.object({
+  programa_id: z.string().uuid().optional(),
   cohorte_id: z.string().uuid().optional(),
   aspirante_id: z.string().uuid().optional(),
   estado: z.nativeEnum(EstadoInscripcion).optional(),
@@ -140,3 +141,8 @@ export const listEnrollmentsQuerySchema = z.object({
 });
 
 export type ListEnrollmentsQueryInput = z.infer<typeof listEnrollmentsQuerySchema>;
+
+export const ownEnrollmentsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(100),
+}).strict();

@@ -59,9 +59,9 @@ export class GradesDAO {
         pcc.fecha_inicio,
         pcc.fecha_fin,
         ca.codigo_cohorte,
-        cc.nombre_modulo,
-        cc.codigo_componente,
-        cc.creditos_academicos
+        cc.nombre AS nombre_modulo,
+        cc.codigo AS codigo_componente,
+        cc.creditos AS creditos_academicos
       FROM programacion_componentes_cohorte pcc
       JOIN cohortes_apertura ca ON ca.id = pcc.cohorte_id
       JOIN componentes_curriculares cc ON cc.id = pcc.componente_id
@@ -226,8 +226,8 @@ export class GradesDAO {
     const query = `
       SELECT 
         mcs.*,
-        cc.nombre_modulo,
-        cc.codigo_componente,
+        cc.nombre AS nombre_modulo,
+        cc.codigo AS codigo_componente,
         i.codigo_expediente,
         pa.nombres AS aspirante_nombres,
         pa.apellidos AS aspirante_apellidos,
@@ -365,17 +365,17 @@ export class GradesDAO {
     const query = `
       SELECT 
         mcs.*,
-        cc.nombre_modulo,
-        cc.codigo_componente,
-        cc.creditos_academicos,
-        cc.orden_secuencia,
+        cc.nombre AS nombre_modulo,
+        cc.codigo AS codigo_componente,
+        cc.creditos AS creditos_academicos,
+        cc.orden_bloque AS orden_secuencia,
         pcc.fecha_inicio,
         pcc.fecha_fin
       FROM matricula_componentes_snepa mcs
       JOIN componentes_curriculares cc ON cc.id = mcs.componente_id
       LEFT JOIN programacion_componentes_cohorte pcc ON pcc.id = mcs.programacion_componente_id
       WHERE mcs.inscripcion_id = $1
-      ORDER BY cc.orden_secuencia ASC, cc.nombre_modulo ASC
+      ORDER BY cc.orden_bloque ASC, cc.nombre ASC
     `;
     const result = await db.query(query, [inscripcionId]);
     return result.rows;
@@ -392,9 +392,10 @@ export class GradesDAO {
       SELECT 
         nl.*,
         u.email AS modificado_por_email,
-        u.rol AS modificado_por_rol
+        r.nombre AS modificado_por_rol
       FROM notas_snepa_logs nl
       JOIN usuarios u ON u.id = nl.modificado_por_usuario_id
+      JOIN roles r ON r.id = u.rol_id
       WHERE nl.matricula_componente_id = $1
       ORDER BY nl.fecha_modificacion DESC
     `;

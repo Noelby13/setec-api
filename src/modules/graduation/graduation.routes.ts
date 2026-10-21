@@ -1,3 +1,5 @@
+import { requireOwnedFileReferences } from '../../middlewares/private-upload.middleware';
+import { requireRecordAccess } from '../../middlewares/ownership.middleware';
 import { Router } from 'express';
 import path from 'path';
 import { z } from 'zod';
@@ -87,6 +89,7 @@ graduationRouter.post(
 graduationRouter.get(
   '/expediente/:id',
   requireAuth,
+  requireRecordAccess('dossier', 'id', ['TITULO_EMITIR']),
   validateSchema({
     params: expedienteIdParamSchema,
   }),
@@ -100,6 +103,7 @@ graduationRouter.get(
 graduationRouter.get(
   '/enrollment/:inscripcionId',
   requireAuth,
+  requireRecordAccess('enrollment', 'inscripcionId', ['TITULO_EMITIR']),
   validateSchema({
     params: inscripcionIdParamSchema,
   }),
@@ -133,7 +137,9 @@ graduationRouter.patch(
 graduationRouter.post(
   '/expediente/:expedienteId/publications',
   requireAuth,
+  requireRecordAccess('dossier', 'expedienteId', ['TITULO_EMITIR']),
   uploadDocumentos.single('evidencia_pdf'),
+  requireOwnedFileReferences(['evidencia_pdf_url']),
   validateSchema({
     params: z.object({ expedienteId: z.string().uuid() }),
     body: createPublicationSchema,
@@ -148,6 +154,7 @@ graduationRouter.post(
 graduationRouter.get(
   '/expediente/:expedienteId/publications',
   requireAuth,
+  requireRecordAccess('dossier', 'expedienteId', ['TITULO_EMITIR']),
   validateSchema({
     params: z.object({ expedienteId: z.string().uuid() }),
   }),

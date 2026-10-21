@@ -158,6 +158,7 @@ export interface CreateConvalidacionDbData {
 }
 
 export interface ListEnrollmentsFilters {
+  programa_id?: string;
   cohorte_id?: string;
   aspirante_id?: string;
   estado?: string;
@@ -449,6 +450,12 @@ export class EnrollmentDao {
     if (filters.cohorte_id) {
       whereClauses.push(`i.cohorte_id = $${paramIndex}`);
       values.push(filters.cohorte_id);
+      paramIndex++;
+    }
+
+    if (filters.programa_id) {
+      whereClauses.push(`EXISTS (SELECT 1 FROM cohortes_apertura pc WHERE pc.id = i.cohorte_id AND pc.programa_id = $${paramIndex})`);
+      values.push(filters.programa_id);
       paramIndex++;
     }
 

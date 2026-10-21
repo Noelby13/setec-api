@@ -14,15 +14,15 @@ export class UsersDao {
     return result.rows;
   }
 
-  static async list(search: string, page: number, limit: number): Promise<{ items: UserWithRole[]; total: number }> {
+  static async list(search: string, page: number, limit: number, role?: string): Promise<{ items: UserWithRole[]; total: number }> {
     // SELECT explicit public fields; password hashes never enter the list response.
-    const predicate = `($1 = '' OR u.email ILIKE $2 OR u.username ILIKE $2 OR u.nombres ILIKE $2 OR u.apellidos ILIKE $2)`;
-    const args = [search, `%${search.replace(/[\\%_]/g, '\\$&')}%`];
+    const predicate = `($1 = '' OR u.email ILIKE $2 OR u.username ILIKE $2 OR u.nombres ILIKE $2 OR u.apellidos ILIKE $2) AND ($3::text IS NULL OR r.nombre = $3)`;
+    const args = [search, `%${search.replace(/[\\%_]/g, '\\$&')}%`, role || null];
     const result = await pool.query<UserWithRole>(`SELECT u.id, u.username, u.email, u.nombres, u.apellidos,
       u.telefono, u.avatar_url, u.rol_id, r.nombre AS rol_nombre, u.activo, u.email_verificado, u.created_at, u.updated_at
       FROM usuarios u JOIN roles r ON r.id = u.rol_id WHERE ${predicate}
-      ORDER BY u.created_at DESC, u.id LIMIT $3 OFFSET $4`, [...args, limit, (page - 1) * limit]);
-    const count = await pool.query<{ total: string }>(`SELECT COUNT(*) AS total FROM usuarios u WHERE ${predicate}`, args);
+      ORDER BY u.created_at DESC, u.id LIMIT $4 OFFSET $5`, [...args, limit, (page - 1) * limit]);
+    const count = await pool.query<{ total: string }>(`SELECT COUNT(*) AS total FROM usuarios u JOIN roles r ON r.id = u.rol_id WHERE ${predicate}`, args);
     return { items: result.rows, total: Number(count.rows[0].total) };
   }
 

@@ -13,11 +13,22 @@ import {
   CreateConvalidationInput,
   DictamenConvalidationInput,
   ListEnrollmentsQueryInput,
+  ownEnrollmentsQuerySchema,
 } from './enrollment.schema';
 import { getRelativeUploadPath } from '../../middlewares/upload.middleware';
 import { AppError } from '../../middlewares/error.middleware';
+import { hasAnyPermission } from '../../middlewares/ownership.middleware';
+import { cashierEnrollmentView } from './cashier.view';
 
 export class EnrollmentController {
+  static async listCashierEnrollments(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await EnrollmentService.listEnrollments(req.query as unknown as ListEnrollmentsQueryInput);
+      res.json({ success: true, data: result.data.map(cashierEnrollmentView), pagination: {
+        total: result.total, page: result.page, limit: result.limit, totalPages: Math.ceil(result.total / result.limit),
+      } });
+    } catch (error) { next(error); }
+  }
   // ==========================================
   // INSCRIPCIONES
   // ==========================================
@@ -42,7 +53,11 @@ export class EnrollmentController {
       }
 
       const currentUserId = req.user?.id;
-      const result = await EnrollmentService.createEnrollment(body, uploadedFiles, currentUserId);
+      const canManage = hasAnyPermission(req, ['INSCRIPCION_VALIDAR']);
+      if (!canManage && (body.observaciones_administracion || body.requiere_nivelacion_investigativa)) {
+        throw new AppError('Los campos administrativos requieren autorización', 403);
+      }
+      const result = await EnrollmentService.createEnrollment(body, uploadedFiles, currentUserId, canManage);
 
       res.status(201).json({
         success: true,
@@ -111,12 +126,14 @@ export class EnrollmentController {
         throw new AppError('Usuario no autenticado', 401);
       }
 
-      const result = await EnrollmentService.getMyEnrollments(req.user.id);
+      const pagination = ownEnrollmentsQuerySchema.parse(req.query);
+      const result = await EnrollmentService.getMyEnrollments(req.user.id, pagination);
 
       res.status(200).json({
         success: true,
         data: result.data,
         total: result.total,
+        pagination: { ...pagination, total: result.total, totalPages: Math.ceil(result.total / pagination.limit) },
       });
     } catch (error) {
       next(error);
@@ -131,6 +148,11 @@ export class EnrollmentController {
     try {
       const id = req.params.id as string;
       const result = await EnrollmentService.getEnrollmentById(id);
+
+      if (!hasAnyPermission(req, ['INSCRIPCION_VALIDAR']) && hasAnyPermission(req, ['PAGO_VALIDAR'])) {
+        res.json({ success: true, data: { inscripcion: cashierEnrollmentView(result.inscripcion), pagos: result.pagos, convalidaciones: [] } });
+        return;
+      }
 
       res.status(200).json({
         success: true,

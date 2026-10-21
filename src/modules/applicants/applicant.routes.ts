@@ -1,3 +1,5 @@
+import { requireOwnedFileReferences } from '../../middlewares/private-upload.middleware';
+import { requireRecordAccess, requireSelfAssignment } from '../../middlewares/ownership.middleware';
 import { Router } from 'express';
 import { ApplicantController } from './applicant.controller';
 import { requireAuth, requirePermission } from '../../middlewares/auth.middleware';
@@ -51,6 +53,7 @@ applicantsRouter.put(
   '/me',
   requireAuth,
   profileUploadFields,
+  requireOwnedFileReferences(['cedula_identidad_pdf_url', 'tutor_documento_url']),
   validateSchema({ body: updateApplicantProfileSchema }),
   ApplicantController.updateMyProfile
 );
@@ -64,6 +67,7 @@ applicantsRouter.put(
 applicantsRouter.get(
   '/degrees/:degreeId',
   requireAuth,
+  requireRecordAccess('degree', 'degreeId', ['INSCRIPCION_VALIDAR']),
   validateSchema({ params: degreeIdParamSchema }),
   ApplicantController.getAcademicDegreeById
 );
@@ -72,7 +76,9 @@ applicantsRouter.get(
 applicantsRouter.put(
   '/degrees/:degreeId',
   requireAuth,
+  requireRecordAccess('degree', 'degreeId', ['INSCRIPCION_VALIDAR']),
   degreeUploadFields,
+  requireOwnedFileReferences(['titulo_pdf_url', 'certificado_rn_url']),
   validateSchema({ params: degreeIdParamSchema, body: updateAcademicDegreeSchema }),
   ApplicantController.updateAcademicDegree
 );
@@ -81,6 +87,7 @@ applicantsRouter.put(
 applicantsRouter.delete(
   '/degrees/:degreeId',
   requireAuth,
+  requireRecordAccess('degree', 'degreeId', ['INSCRIPCION_VALIDAR']),
   validateSchema({ params: degreeIdParamSchema }),
   ApplicantController.deleteAcademicDegree
 );
@@ -112,7 +119,9 @@ applicantsRouter.post(
   '/',
   requireAuth,
   profileUploadFields,
+  requireOwnedFileReferences(['cedula_identidad_pdf_url', 'tutor_documento_url']),
   validateSchema({ body: createApplicantProfileSchema }),
+  requireSelfAssignment,
   ApplicantController.createProfile
 );
 
@@ -120,6 +129,7 @@ applicantsRouter.post(
 applicantsRouter.get(
   '/:id',
   requireAuth,
+  requireRecordAccess('applicant', 'id', ['INSCRIPCION_VALIDAR']),
   validateSchema({ params: applicantIdParamSchema }),
   ApplicantController.getProfileById
 );
@@ -128,7 +138,9 @@ applicantsRouter.get(
 applicantsRouter.put(
   '/:id',
   requireAuth,
+  requireRecordAccess('applicant', 'id', ['INSCRIPCION_VALIDAR']),
   profileUploadFields,
+  requireOwnedFileReferences(['cedula_identidad_pdf_url', 'tutor_documento_url']),
   validateSchema({ params: applicantIdParamSchema, body: updateApplicantProfileSchema }),
   ApplicantController.updateProfile
 );
@@ -146,6 +158,7 @@ applicantsRouter.patch(
 applicantsRouter.put(
   '/:id/interests',
   requireAuth,
+  requireRecordAccess('applicant', 'id', ['INSCRIPCION_VALIDAR']),
   validateSchema({ params: applicantIdParamSchema, body: replaceInterestsSchema }),
   ApplicantController.replaceInterests
 );
@@ -154,6 +167,7 @@ applicantsRouter.put(
 applicantsRouter.get(
   '/:id/interests',
   requireAuth,
+  requireRecordAccess('applicant', 'id', ['INSCRIPCION_VALIDAR']),
   validateSchema({ params: applicantIdParamSchema }),
   ApplicantController.getInterests
 );
@@ -162,7 +176,9 @@ applicantsRouter.get(
 applicantsRouter.post(
   '/:id/degrees',
   requireAuth,
+  requireRecordAccess('applicant', 'id', ['INSCRIPCION_VALIDAR']),
   degreeUploadFields,
+  requireOwnedFileReferences(['titulo_pdf_url', 'certificado_rn_url']),
   validateSchema({ params: applicantIdParamSchema, body: createAcademicDegreeSchema }),
   ApplicantController.createAcademicDegree
 );
@@ -171,6 +187,7 @@ applicantsRouter.post(
 applicantsRouter.get(
   '/:id/degrees',
   requireAuth,
+  requireRecordAccess('applicant', 'id', ['INSCRIPCION_VALIDAR']),
   validateSchema({ params: applicantIdParamSchema }),
   ApplicantController.listAcademicDegrees
 );

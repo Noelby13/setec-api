@@ -9,7 +9,7 @@
     "gen:excel": "tsx src/scripts/generate-snepa-template.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "npm run test:auth",
+    "test": "node --import tsx --test src/middlewares/*.test.ts src/modules/auth/*.test.ts src/modules/users/*.test.ts src/modules/applicants/*.test.ts src/modules/enrollments/*.test.ts",
     "test:auth": "node --import tsx --test src/modules/auth/*.test.ts src/modules/users/*.test.ts"
   },
   "keywords": [

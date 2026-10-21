@@ -1,3 +1,5 @@
+import { requireOwnedFileReferences } from '../../middlewares/private-upload.middleware';
+import { requireRecordAccess } from '../../middlewares/ownership.middleware';
 import { Router } from 'express';
 import { EnrollmentController } from './enrollment.controller';
 import { requireAuth, requirePermission } from '../../middlewares/auth.middleware';
@@ -14,6 +16,7 @@ import {
   paymentIdParamSchema,
   convalidationIdParamSchema,
   listEnrollmentsQuerySchema,
+  ownEnrollmentsQuerySchema,
 } from './enrollment.schema';
 
 export const enrollmentRouter = Router();
@@ -45,7 +48,9 @@ const convalidacionUploadFields = uploadConvalidaciones.fields([
 // ==========================================
 
 // Get authenticated student's enrollments
-enrollmentRouter.get('/me', requireAuth, EnrollmentController.getMyEnrollments);
+enrollmentRouter.get('/me', requireAuth, validateSchema({ query: ownEnrollmentsQuerySchema }), EnrollmentController.getMyEnrollments);
+enrollmentRouter.get('/cashier', requireAuth, requirePermission('PAGO_VALIDAR'),
+  validateSchema({ query: listEnrollmentsQuerySchema }), EnrollmentController.listCashierEnrollments);
 
 // Cashier / Admin approves or rejects a registered payment
 enrollmentRouter.patch(
@@ -89,6 +94,7 @@ enrollmentRouter.post(
   '/',
   requireAuth,
   ponenciaUploadFields,
+  requireOwnedFileReferences(['archivo_ponencia_url']),
   validateSchema({ body: createEnrollmentSchema }),
   EnrollmentController.createEnrollment
 );
@@ -97,6 +103,7 @@ enrollmentRouter.post(
 enrollmentRouter.get(
   '/:id',
   requireAuth,
+  requireRecordAccess('enrollment', 'id', ['INSCRIPCION_VALIDAR', 'PAGO_VALIDAR']),
   validateSchema({ params: enrollmentIdParamSchema }),
   EnrollmentController.getEnrollmentById
 );
@@ -121,7 +128,9 @@ enrollmentRouter.patch(
 enrollmentRouter.post(
   '/:id/payments',
   requireAuth,
+  requireRecordAccess('enrollment', 'id', ['PAGO_VALIDAR']),
   baucherUploadFields,
+  requireOwnedFileReferences(['comprobante_baucher_url']),
   validateSchema({
     params: enrollmentIdParamSchema,
     body: createPaymentSchema,
@@ -133,6 +142,7 @@ enrollmentRouter.post(
 enrollmentRouter.get(
   '/:id/payments',
   requireAuth,
+  requireRecordAccess('enrollment', 'id', ['PAGO_VALIDAR']),
   validateSchema({ params: enrollmentIdParamSchema }),
   EnrollmentController.getPaymentsByEnrollment
 );
@@ -145,7 +155,9 @@ enrollmentRouter.get(
 enrollmentRouter.post(
   '/:id/convalidations',
   requireAuth,
+  requireRecordAccess('enrollment', 'id', ['CONVALIDACION_DICTAMINAR']),
   convalidacionUploadFields,
+  requireOwnedFileReferences(['certificado_origen_url']),
   validateSchema({
     params: enrollmentIdParamSchema,
     body: createConvalidationSchema,
@@ -157,6 +169,7 @@ enrollmentRouter.post(
 enrollmentRouter.get(
   '/:id/convalidations',
   requireAuth,
+  requireRecordAccess('enrollment', 'id', ['CONVALIDACION_DICTAMINAR']),
   validateSchema({ params: enrollmentIdParamSchema }),
   EnrollmentController.getConvalidationsByEnrollment
 );

@@ -217,7 +217,7 @@ export const updateAcademicDegreeSchema = z.object({
   certificado_rn_url: z.string().optional().nullable(),
   titulo_pdf_url: z.string().optional().nullable(),
   porcentaje_creditos_investigacion: numberPreprocessor(),
-});
+}).strict();
 
 export const validateAcademicDegreeSchema = z.object({
   estado_validacion: estadoValidacionTituloEnum,

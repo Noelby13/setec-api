@@ -9,6 +9,7 @@ export const updateManagedUserSchema = z.object({
 }).partial().strict().refine(value => Object.keys(value).length > 0, 'At least one user field is required');
 export const userIdSchema = z.object({ id: z.string().uuid() });
 export const userSearchSchema = z.object({
+  rol: z.string().trim().min(1).max(50).optional(),
   search: z.string().trim().max(150).default(''),
   page: z.coerce.number().int().min(1).max(100000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),

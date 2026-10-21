@@ -107,6 +107,7 @@ export interface CreateAcademicDegreeData {
 }
 
 export interface UpdateAcademicDegreeData {
+  estado_validacion?: 'PENDIENTE';
   area_conocimiento_id?: string | null;
   nivel_titulo?: string;
   denominacion_titulo?: string;
@@ -457,7 +458,7 @@ export class ApplicantDao {
         aia.aspirante_id,
         aia.area_conocimiento_id,
         ac.nombre as area_nombre,
-        ac.codigo as area_codigo
+        NULL::text as area_codigo
       FROM aspirantes_intereses_areas aia
       JOIN areas_conocimiento ac ON aia.area_conocimiento_id = ac.id
       WHERE aia.aspirante_id = $1
@@ -617,6 +618,10 @@ export class ApplicantDao {
 
     if (setClauses.length === 0) {
       return this.getAcademicDegreeById(id, db);
+    }
+
+    if (data.estado_validacion === 'PENDIENTE') {
+      setClauses.push(`estado_validacion = 'PENDIENTE'`);
     }
 
     values.push(id);

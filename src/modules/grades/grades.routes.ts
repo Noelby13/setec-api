@@ -1,3 +1,5 @@
+import { requireTeachingAssignment } from '../../middlewares/teaching.middleware';
+import { requireRecordAccess } from '../../middlewares/ownership.middleware';
 import { Router } from 'express';
 import path from 'path';
 import { GradesController } from './grades.controller';
@@ -41,6 +43,7 @@ gradesRouter.post(
   '/import/:programacionComponenteId',
   requireAuth,
   requirePermission('NOTA_IMPORTAR'),
+  requireTeachingAssignment,
   uploadActasExcel.single('archivo_excel'),
   validateSchema({
     params: programacionComponenteIdParamSchema,
@@ -56,6 +59,7 @@ gradesRouter.patch(
   '/:matriculaComponenteId',
   requireAuth,
   requirePermission('NOTA_MODIFICAR'),
+  requireRecordAccess('grade', 'matriculaComponenteId', ['NOTA_MODIFICAR']),
   validateSchema({
     params: matriculaComponenteIdParamSchema,
     body: modifyGradeSchema,
@@ -70,6 +74,8 @@ gradesRouter.patch(
 gradesRouter.get(
   '/component/:programacionComponenteId',
   requireAuth,
+  requirePermission('NOTA_IMPORTAR'),
+  requireTeachingAssignment,
   validateSchema({
     params: programacionComponenteIdParamSchema,
   }),
@@ -83,6 +89,8 @@ gradesRouter.get(
 gradesRouter.get(
   '/lots/:programacionComponenteId',
   requireAuth,
+  requirePermission('NOTA_IMPORTAR'),
+  requireTeachingAssignment,
   validateSchema({
     params: programacionComponenteIdParamSchema,
   }),
@@ -96,6 +104,7 @@ gradesRouter.get(
 gradesRouter.get(
   '/student/:inscripcionId',
   requireAuth,
+  requireRecordAccess('enrollment', 'inscripcionId', ['NOTA_IMPORTAR', 'NOTA_MODIFICAR']),
   validateSchema({
     params: inscripcionIdParamSchema,
   }),
@@ -109,6 +118,7 @@ gradesRouter.get(
 gradesRouter.get(
   '/:matriculaComponenteId/logs',
   requireAuth,
+  requireRecordAccess('grade', 'matriculaComponenteId', ['NOTA_IMPORTAR', 'NOTA_MODIFICAR']),
   validateSchema({
     params: matriculaComponenteIdParamSchema,
   }),

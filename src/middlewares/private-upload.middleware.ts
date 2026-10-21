@@ -4,6 +4,7 @@ import { AppError } from './error.middleware';
 import { requireAuth } from './auth.middleware';
 import { hasAnyPermission } from './ownership.middleware';
 import { getRelativeUploadPath } from './upload.middleware';
+import { CertificatesService } from '../modules/certificates/certificates.service';
 
 const documentOwnersQuery = `
   SELECT a.usuario_id, 'INSCRIPCION_VALIDAR' AS permiso FROM personas_aspirantes a
@@ -74,6 +75,7 @@ export async function authorizePrivateUpload(req: Request, _res: Response, next:
         throw new AppError('Document not found or access denied', 403);
       }
     }
+    await CertificatesService.assertStoredDocumentDownloadAllowed(`/uploads/${segments.join('/')}`, req.user);
     next();
   } catch (error) { next(error); }
 }

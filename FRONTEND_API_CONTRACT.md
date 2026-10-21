@@ -1,6 +1,82 @@
 # Contrato de integración Frontend — API SNEPA/SETEC
 
-Contrato del código actual, inspeccionado el 20 de octubre de 2026. Entrega complementaria: `frontend-types.ts`. Las rutas y validaciones del código prevalecen sobre comentarios o Swagger. No se modificó el backend.
+Original snapshot inspected 2026-10-20; updated incrementally on 2026-10-21. Entrega complementaria: `frontend-types.ts`. Las rutas y validaciones del código prevalecen sobre comentarios o Swagger. See the update section for the implemented backend changes.
+
+## Update — 2026-10-21: integrated student and administrative flows
+
+This section supersedes older snapshot statements below. The canonical contract and types live in POSGRADOSETECAPI; frontends retain byte-identical copies. Run `npm run contracts:check` or explicitly synchronize with `npm run contracts:sync` from the API repository.
+
+### Identity and user management additions
+
+All JSON responses retain `{success,message?,data}`. No password hashes or signing secrets are returned.
+
+| Method / path | Authority | Body or query | `data` |
+| --- | --- | --- | --- |
+| POST `/api/auth/register` | Public, strict student-only role | email, password, nombres, apellidos; optional username, telefono | Student profile, no tokens; login separately |
+| PATCH `/api/auth/profile` | Current account | Partial email, username, nombres, apellidos, telefono | Updated profile |
+| GET `/api/users` | USUARIO_GESTIONAR or SUPER_ADMIN | search, rol (exact role name), page (default 1), limit (default 20, max 100) | `{items,total,page,limit}` |
+| GET `/api/users/roles` | Same | None | Roles assignable within current authority, including their permissions |
+| POST `/api/users` | Same | Registration fields plus rolId, optional activo | Safe managed user including rol_id |
+| PATCH `/api/users/:id` | Same | Partial account fields plus rolId, activo | Updated safe managed user |
+| GET `/api/enrollments/cashier` | PAGO_VALIDAR or SUPER_ADMIN | search, programa_id, cohorte_id, aspirante_id, estado, page, limit | Cashier-safe rows; top-level pagination |
+
+Registration rejects all unknown fields, including rolId, role, permissions, activo and email_verificado. Passwords have at least eight characters and at most 72 UTF-8 bytes for bcrypt. Duplicate email/username returns 409, including database uniqueness races. Student role must already exist; a missing role/configuration returns 503 without creating an account. Administrative role assignment requires a current permission subset; own role/status changes and administrative modification of SUPER_ADMIN accounts are denied. Profile email edits clear email verification.
+
+JWT access tokens now carry a session `sid`. Every protected request checks that session, account activity and current role permissions in the database. Pre-increment access tokens require a new login. Login and refresh response shapes are preserved. Signing keys must be explicitly configured, nonempty and distinct: JWT_SECRET and JWT_REFRESH_SECRET. Missing/invalid configuration returns 503. Logout using a refresh token still works; bearer-only logout is now authenticated and revokes its bound session. Refresh consumption is atomic, so simultaneous reuse cannot create two replacement sessions.
+
+### Ownership, applications and cashier boundaries
+
+Applicant/degree reads and updates, enrollment details, payment/convalidation operations, own grades, graduation dossier reads and scientific publications check ownership or the specific administrative permission. Self applicant creation binds usuario_id to the current account and cannot target another user. Enrollment creation resolves the student's applicant; another aspirante_id is denied. Administrative comments and leveling decisions require admission permission.
+
+`GET /api/enrollments` and the cashier collection accept the additive UUID filter `programa_id`; existing cohort, applicant, state, search and pagination filters are preserved. Editing a prior degree through `PUT /api/applicants/degrees/:degreeId` returns changed evidence to `estado_validacion=PENDIENTE`; the student cannot retain or assign an administrative validation.
+
+Only `INSCRIPCION_ABIERTA` accepts a new application; the cohort row is locked inside the existing transaction. Duplicate applicant/cohort remains 409. The initial outcome is documentary review, committee review or waiting list according to existing rules; it does not imply admission, payment or matriculation. Existing documentary quorum and payment transitions are retained.
+
+Cashier discovery has the same top-level pagination envelope as `/enrollments` but exposes only record ID/code, state, student name, program/cohort, recorded cohort prices, collection-enabled flag and quorum counts. Cashier-only detail keeps `{inscripcion,pagos,convalidaciones:[]}` while redacting identity documents, contact data, degrees and admission details. New cashier seed defaults grant only PAGO_VALIDAR. The optional `database/migrations/20261021_cashier_permissions.sql` removes the legacy default admission grant on an existing database; it has NOT been applied. Explicit additional privileges remain effective. Do not rerun the full schema or seed on existing data to apply this change.
+
+### Complete own history and teaching scope
+
+`GET /api/enrollments/me?page=1&limit=100` now supports positive page and limit 1–100 (defaults 1/100). Only these two query fields are accepted; aspirante_id cannot override ownership. Existing `data` and `total` remain, with additive `pagination:{total,page,limit,totalPages}`. Frontends must load all pages or explicitly report incomplete history; the student portal rejects partial/duplicate/stalled responses rather than claiming complete counts.
+
+`GET /api/cohorts/teaching/me` returns only programmed components linked through `personal_academico.usuario_id` to the current account. Its safe rows include component/program/cohort names and IDs, recorded dates, schedule, room and closed-act status. Teacher dashboards and the grades selector consume these assigned activities. `NOTA_IMPORTAR` does not authorize a DOCENTE to another teacher's component: imports, class grades and import history check assignment. Grade-log/manual-change scope and uploaded whole-class acts are restricted likewise; a teacher cannot query another student's entire program transcript. Existing coordinator/administrator permissions are retained.
+
+### Documents and academic verification
+
+Only promotional `/uploads/programas/` and `/uploads/silabos/` assets remain public. Other uploads require Bearer plus ownership or the corresponding resource permission; unlinked files fail closed. Self-service attachment references must be freshly uploaded or already authorized; assigning another account’s URL is rejected before changing the record. Fetch private files as authenticated blobs, not unauthenticated anchors; never forward tokens to external document URLs. Both frontends implement authorized local downloads.
+
+The public graduation verification response excludes identification type/number and private document URLs. Student name, program, cohort, issue date, document type and institutional code remain. Generated new codes use 128 random bits. Existing official codes remain unchanged. The DAO now uses `sedes_ies.nombre`; grade projections alias existing `nombre`, `codigo`, `creditos`, `orden_bloque` into the established transport field names. Applicant interest `area_codigo` is null because that column does not exist, rather than a fabricated value.
+
+The implementation gates fresh issuance on the existing `EGRESADO` state and an existing locally uploaded institutional PDF (confined path and PDF header verified), in addition to prior language/publication checks. Matriculation alone returns 409. This is an implementation safeguard, not a newly established academic norm: the institution still owns the criteria and authorized process for recording EGRESADO. No arbitrary state-transition endpoint, official PDF generator, signature design or recovery email delivery is introduced.
+
+### Digital certificate registry — current additive contract
+
+Mount: `/api/certificates`. All responses set `Cache-Control: no-store`. JSON endpoints use `{success:true,data}`; collections additionally expose top-level `total` and `pagination:{total,page,limit,totalPages}`. The download is PDF bytes with attachment headers, not a JSON envelope. UUID path parameters are validated. Certificate administration means `TITULO_EMITIR` **or** `CERTIFICADO_REVOCAR`, with the existing `SUPER_ADMIN` override; register and revoke each require their specific permission.
+
+| Method / path | Authority | Input | Response |
+| --- | --- | --- | --- |
+| GET `/api/certificates/verify/:token` | Public | Random public UUID token | Minimal public verification view; unknown token 404, malformed UUID 400 |
+| GET `/api/certificates/me` | Current owner | Only page/limit; defaults 1/20, limit 1–100, page 1–100000 | Own certificate collection, including revocations |
+| GET `/api/certificates` | Certificate administration | page/limit plus optional search (max150), estado VIGENTE/REVOCADO | Administrative certificate collection |
+| GET `/api/certificates/:id/download` | Owner or certificate administration | Certificate UUID | Existing PDF attachment; inaccessible/missing record 404 |
+| GET `/api/certificates/:id/events` | Certificate administration | Certificate UUID | `[{id,accion,fecha,actor_id,motivo}]` ordered events |
+| POST `/api/certificates/expediente/:id/register` | TITULO_EMITIR | Empty strict JSON object `{}`; id is graduation dossier UUID | 201 certificate view; explicitly registers an already issued local institutional PDF |
+| POST `/api/certificates/:id/revoke` | CERTIFICADO_REVOCAR | Strict `{motivo:string}` trim, 1–1000 characters | Certificate view with REVOCADO, no download; repeat revocation 409 |
+
+`CertificatePublicView = {token_publico,estado,titular_nombre,programa_nombre,cohorte_codigo,tipo_documento,fecha_emision,fecha_revocacion}`. Public verification adds `integridad_verificada`; it is true only for a VIGENTE record whose stored PDF passes its SHA-256 comparison. A revoked record remains publicly identifiable with `integridad_verificada:false`; missing or altered current PDFs return 409. No identification numbers, contacts, payment data, private file paths, document hash, revocation reason or actor ID are public.
+
+Protected certificate views add only `id`, `expediente_id`, `puede_descargar`. A list can still show a valid-state record with `puede_descargar:false` when its file is unavailable or fails integrity. The download rechecks ownership/administration, VIGENTE and SHA-256; revocation, missing PDF or mismatch returns 409. Existing authenticated upload-file access likewise blocks downloads of registered revoked or altered certificate documents. Verification establishes registry/file integrity; it is not a digital signature or a new academic determination.
+
+Fresh graduation issuance writes the dossier, a linked registry snapshot and an EMITIDO audit event in the same transaction. Explicit legacy registration writes REGISTRADO and refuses dossiers lacking an actual issued document (409), duplicate registry associations (409), or unusable PDFs (400). Revocation records actor, timestamp and required reason plus a REVOCADO event atomically. There is no update/delete/reissue endpoint for a certificate snapshot, and no automatic registration of historic records.
+
+`certificados_registro` stores the random token, owner link, immutable recipient/program/cohort/document-type/issue-date snapshot, local PDF reference and SHA-256. A database trigger preserves snapshot bytes and prevents changes after revocation. `certificados_eventos` stores the three event kinds. The additive `database/migrations/20261021_certificate_registry.sql` creates both tables/indexes/trigger and the new permission; it assigns that permission only to the existing SUPER_ADMIN role. Institutional policy still determines any additional revocation authority and acceptable reasons. This migration does not change historic dossiers, declare completion or issue documents.
+
+Graduation dossier GETs add `{certificado_digital_id:UUID|null, estado_certificado:'VIGENTE'|'REVOCADO'|null, registro_digital_disponible:boolean}`. The older `GET /api/graduation/verify/:codigoRegistro` stays compatible and now adds `registro_digital_disponible`, `integridad_verificada`, `estado_certificado`, and optional `token_publico`; **`autenticidad_verificada` is boolean, never unconditionally true**. An unregistered legacy document can return metadata with authenticity/integrity false; a registered VIGENTE document requires verified bytes, and REVOCADO is false. Registered names/program/cohort/type/date use the immutable snapshot. Legacy metadata alone is not a claim of digital validity.
+
+Without the registry migration, certificate registry operations and fresh issuance return 503 instead of pretending success. Legacy dossier reads remain available with null certificate markers/availability false; legacy verification reports false assurances. No migration has been applied to the configured real database. Official templates, signing procedures, academic egreso criteria and account recovery delivery remain institutional/configuration prerequisites.
+
+## Historical reference snapshot — 2026-10-20
+
+Sections 1–9 below preserve the original endpoint examples, DTO field dictionary and baseline limitations for compatibility investigation. They are **historical**, not current security guarantees or current feature availability. The update sections above supersede conflicting registration, permission, ownership, static-file, SQL and certificate statements. Use the current `ApiEndpointMap` in `frontend-types.ts` and mounted routes for additions; the historical count of 88 is not the current endpoint count.
 
 ## 1. Inicio rápido y alcance
 

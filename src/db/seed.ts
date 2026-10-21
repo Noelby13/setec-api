@@ -37,6 +37,11 @@ const ROLES: RoleDefinition[] = [
 
 const PERMISOS: PermisoDefinition[] = [
   {
+    codigo: 'CERTIFICADO_REVOCAR',
+    nombre: 'Revocación de certificados',
+    descripcion: 'Permite revocar certificados registrados con motivo y auditoría',
+  },
+  {
     codigo: 'USUARIO_GESTIONAR',
     nombre: 'Gestión Integral de Usuarios',
     descripcion: 'Permite crear, editar, asignar roles y gestionar el estado de los usuarios',
@@ -95,6 +100,7 @@ const PERMISOS: PermisoDefinition[] = [
 
 const ROLE_PERMISSIONS_MAPPING: Record<string, string[]> = {
   SUPER_ADMIN: [
+    'CERTIFICADO_REVOCAR',
     'USUARIO_GESTIONAR',
     'SEDE_GESTIONAR',
     'DOCENTE_GESTIONAR',

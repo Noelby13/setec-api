@@ -233,6 +233,7 @@ export const PermisoCodigo = {
   NOTA_IMPORTAR: 'NOTA_IMPORTAR',
   NOTA_MODIFICAR: 'NOTA_MODIFICAR',
   TITULO_EMITIR: 'TITULO_EMITIR',
+  CERTIFICADO_REVOCAR: 'CERTIFICADO_REVOCAR',
 } as const;
 export type PermisoCodigo = (typeof PermisoCodigo)[keyof typeof PermisoCodigo];
 
@@ -953,7 +954,7 @@ export interface DictamenConvalidationRequest {
   estado_dictamen: 'APROBADA' | 'RECHAZADA'; coordinador_dictaminador_id?: UUID | null;
 }
 export interface ListEnrollmentsQuery {
-  cohorte_id?: UUID; aspirante_id?: UUID; estado?: EstadoInscripcion; page?: NumericInput; limit?: NumericInput; search?: string;
+  programa_id?: UUID; cohorte_id?: UUID; aspirante_id?: UUID; estado?: EstadoInscripcion; page?: NumericInput; limit?: NumericInput; search?: string;
 }
 export interface ModifyGradeRequest {
   /** Obligatorio, mínimo 5 caracteres. */ motivo_modificacion: string;
@@ -1023,7 +1024,7 @@ export interface UserProfileResponse extends Pick<UsuarioRow, 'id' | 'username' 
   rol: string; permisos: string[];
 }
 export interface LoginResponse { user: UserProfileResponse; tokens: AuthTokens }
-export interface AccessTokenClaims { sub: UUID; rol: string; permisos: string[]; iat: number; exp: number }
+export interface AccessTokenClaims { sub: UUID; sid: UUID; rol: string; permisos: string[]; iat: number; exp: number }
 export interface RefreshTokenClaims { sub: UUID; jti: UUID; iat: number; exp: number }
 export type AreaInfo = Pick<AreaConocimientoRow, 'id' | 'nombre' | 'slug' | 'icono_url'>;
 export type TagInfo = TagAcademicoRow;
@@ -1062,7 +1063,7 @@ export interface ApplicantListItem extends PersonaAspiranteRow {
   usuario_email: string | null; verificador_nombres: string | null; verificador_apellidos: string | null;
 }
 /** Proyección SQL provisional: ac.codigo no existe en init.sql; esta consulta falla con ese esquema. */
-export interface ApplicantInterest extends AspiranteInteresAreaRow { area_nombre: string; area_codigo: string }
+export interface ApplicantInterest extends AspiranteInteresAreaRow { area_nombre: string; area_codigo: string | null }
 export interface AcademicDegreeDetail extends TituloAcademicoAspiranteRow {
   area_nombre: string | null; validador_nombres: string | null; validador_apellidos: string | null;
 }
@@ -1100,31 +1101,33 @@ export interface StudentGrade extends MatriculaComponenteSnepaRow {
   nombre_modulo: string; codigo_componente: string; creditos_academicos: number; orden_secuencia: number;
   fecha_inicio: DateOnly | null; fecha_fin: DateOnly | null;
 }
-/** Provisional: el JOIN solicita usuarios.rol, que no existe en init.sql. */
+/** Current role projection is joined through roles. */
 export interface GradeLog extends NotaSnepaLogRow { modificado_por_email: string; modificado_por_rol: string }
 export interface ImportLot extends LoteImportacionNotasRow { subido_por_email: string }
 export interface GraduationDetail extends ExpedienteGraduacionRow {
   codigo_expediente: string; inscripcion_estado: EstadoInscripcion; aspirante_nombres: string; aspirante_apellidos: string;
   numero_identificacion: string; programa_nombre: string; programa_subtipo: SubtipoPrograma; codigo_cohorte: string;
   publicaciones: PublicacionCientificaRow[];
+  certificado_digital_id: UUID | null; estado_certificado: CertificateStatus | null; registro_digital_disponible: boolean;
 }
 export interface IssueDocumentResult {
   expediente: ExpedienteGraduacionRow | null; codigo_registro: string; fecha_emision: DateOnly;
   estado_inscripcion: 'GRADUADO_O_CERTIFICADO'; estudiante: string; programa: string;
 }
-/** Provisional: QR DAO usa sedes_universitarias.nombre_sede, inexistente en init.sql. */
+/** Public verification excludes identity numbers and private document URLs. */
 export interface PublicGraduationVerification {
-  autenticidad_verificada: true; codigo_registro: string; tipo_documento: TipoDocumentoFinal; fecha_emision: DateOnly;
-  estudiante: { nombres: string; apellidos: string; tipo_identificacion: TipoIdentificacion; numero_identificacion: string };
+  autenticidad_verificada: boolean; registro_digital_disponible: boolean; integridad_verificada: boolean;
+  estado_certificado: CertificateStatus | null; token_publico?: UUID; codigo_registro: string; tipo_documento: TipoDocumentoFinal; fecha_emision: DateOnly;
+  estudiante: { nombres: string; apellidos: string };
   programa: { nombre: string; categoria: CategoriaPrograma; subtipo: SubtipoPrograma; titulo_o_certificado_otorgado: string };
-  cohorte: { codigo_cohorte: string; sede: string }; documento_digital_url: string | null;
+  cohorte: { codigo_cohorte: string; sede: string };
 }
 /** Endpoint extra de app.ts, sin envelope success. */
 export interface HealthResponse {
   status: 'ok'; uptime: number; timestamp: DateTime; database: { status: 'connected'; serverTime: DateTime };
 }
 // =============================================================================
-// Parámetros y mapa completo de rutas montadas (88 endpoints de módulos).
+// Parámetros y mapa de rutas montadas; incluye adiciones del ecosistema actual.
 // =============================================================================
 export interface IdParam { id: UUID }
 export interface SlugParam { slug: string }
@@ -1164,7 +1167,74 @@ export interface ApiEndpoint<Params, Query, Body, Success, Status extends number
   transport: Transport;
 }
 export type NoInput = undefined;
+/** Public registration never accepts role, status or permission fields. */
+export interface PublicStudentRegistrationRequest {
+  email: string; password: string; nombres: string; apellidos: string;
+  username?: string; telefono?: string;
+}
+export type SelfAccountUpdateRequest = Partial<Omit<PublicStudentRegistrationRequest, 'password'>>;
+export interface ManagedUserRequest extends PublicStudentRegistrationRequest { rolId: UUID; activo?: boolean }
+export type ManagedUserUpdateRequest = SelfAccountUpdateRequest & { rolId?: UUID; activo?: boolean };
+export type ManagedUser = Omit<UserProfileResponse, 'permisos'> & { rol_id: UUID };
+export interface AssignableRole { id: UUID; nombre: string; descripcion: string | null; permisos: string[] }
+export interface ManagedUserPage { items: ManagedUser[]; total: number; page: number; limit: number }
+export interface ManagedUserQuery { search?: string; rol?: string; page?: number; limit?: number }
+export type CashierEnrollment = Pick<EnrollmentDetail, 'id' | 'codigo_expediente' | 'estado' | 'aspirante_nombres' | 'aspirante_apellidos' | 'cohorte_codigo' | 'programa_nombre' | 'precio_matricula' | 'precio_total_cohorte' | 'cobro_habilitado' | 'cupos_actuales_verificados' | 'cupo_minimo'>;
+export interface CashierEnrollmentDossier { inscripcion: CashierEnrollment; pagos: PagoInscripcionRow[]; convalidaciones: [] }
+
+export interface TeachingAssignment {
+  id: UUID; cohorte_id: UUID; componente_id: UUID; fecha_inicio: DateOnly | null;
+  fecha_fin: DateOnly | null; horario: string | null; aula: string | null; actas_notas_cerradas: boolean;
+  componente_nombre: string; componente_codigo: string; codigo_cohorte: string;
+  estado_cohorte: EstadoCohorte; programa_nombre: string;
+}
+/** The registry records supplied institutional PDFs; no official design or digital signature is generated. */
+export type CertificateStatus = 'VIGENTE' | 'REVOCADO';
+export type CertificateEventAction = 'EMITIDO' | 'REGISTRADO' | 'REVOCADO';
+export interface CertificatePublicView {
+  token_publico: UUID; estado: CertificateStatus; titular_nombre: string; programa_nombre: string;
+  cohorte_codigo: string; tipo_documento: TipoDocumentoFinal; fecha_emision: DateOnly;
+  fecha_revocacion: DateTime | null;
+}
+export interface CertificateVerification extends CertificatePublicView { integridad_verificada: boolean }
+export interface CertificateView extends CertificatePublicView {
+  id: UUID; expediente_id: UUID; puede_descargar: boolean;
+}
+/** Protected administrative audit response; actor/reason are never in public verification. */
+export interface CertificateEvent {
+  id: UUID; accion: CertificateEventAction; fecha: DateTime; actor_id: UUID; motivo: string | null;
+}
+export interface CertificatePaginationQuery { page?: number; limit?: number }
+export interface CertificateListQuery extends CertificatePaginationQuery { search?: string; estado?: CertificateStatus }
+export interface CertificateRevokeRequest { motivo: string }
+export type CertificateRegisterRequest = Record<string, never>;
+export interface CertificateCollection extends ApiSuccess<CertificateView[]> { total: number; pagination: Pagination }
+/** Internal SQL row only; its file reference, hash and actor data are not public DTO fields. */
+export interface CertificateRegistryRow extends Omit<CertificateView, 'puede_descargar'> {
+  titular_usuario_id: UUID | null; documento_url: string; documento_sha256: string;
+  registrado_por_usuario_id: UUID; fecha_registro: DateTime; motivo_revocacion: string | null;
+  revocado_por_usuario_id: UUID | null;
+}
+/** Successful download bytes; response Content-Type is application/pdf with attachment disposition. */
+export type CertificatePdfDownload = Uint8Array;
+
 export interface ApiEndpointMap<F = UploadDescriptor> {
+  // Certificate collection/events require either administrative permission; download permits ownership too.
+  'GET /api/certificates/verify/:token': ApiEndpoint<{ token: UUID }, NoInput, NoInput, ApiSuccess<CertificateVerification>, 200, false, null, 'none'>;
+  'GET /api/certificates/me': ApiEndpoint<NoInput, CertificatePaginationQuery, NoInput, CertificateCollection, 200, true, null, 'none'>;
+  'GET /api/certificates': ApiEndpoint<NoInput, CertificateListQuery, NoInput, CertificateCollection, 200, true, 'TITULO_EMITIR' | 'CERTIFICADO_REVOCAR', 'none'>;
+  'GET /api/certificates/:id/download': ApiEndpoint<IdParam, NoInput, NoInput, CertificatePdfDownload, 200, true, null, 'none'>;
+  'GET /api/certificates/:id/events': ApiEndpoint<IdParam, NoInput, NoInput, ApiSuccess<CertificateEvent[]>, 200, true, 'TITULO_EMITIR' | 'CERTIFICADO_REVOCAR', 'none'>;
+  'POST /api/certificates/expediente/:id/register': ApiEndpoint<IdParam, NoInput, CertificateRegisterRequest, ApiSuccess<CertificateView>, 201, true, 'TITULO_EMITIR', 'json'>;
+  'POST /api/certificates/:id/revoke': ApiEndpoint<IdParam, NoInput, CertificateRevokeRequest, ApiSuccess<CertificateView>, 200, true, 'CERTIFICADO_REVOCAR', 'json'>;
+  'GET /api/cohorts/teaching/me': ApiEndpoint<NoInput, NoInput, NoInput, ApiSuccess<TeachingAssignment[]>, 200, true, null, 'none'>;
+  'POST /api/auth/register': ApiEndpoint<NoInput, NoInput, PublicStudentRegistrationRequest, ApiMessageSuccess<UserProfileResponse>, 201, false, null, 'json'>;
+  'PATCH /api/auth/profile': ApiEndpoint<NoInput, NoInput, SelfAccountUpdateRequest, ApiMessageSuccess<UserProfileResponse>, 200, true, null, 'json'>;
+  'GET /api/users': ApiEndpoint<NoInput, ManagedUserQuery, NoInput, ApiSuccess<ManagedUserPage>, 200, true, 'USUARIO_GESTIONAR', 'none'>;
+  'GET /api/users/roles': ApiEndpoint<NoInput, NoInput, NoInput, ApiSuccess<AssignableRole[]>, 200, true, 'USUARIO_GESTIONAR', 'none'>;
+  'POST /api/users': ApiEndpoint<NoInput, NoInput, ManagedUserRequest, ApiMessageSuccess<ManagedUser>, 201, true, 'USUARIO_GESTIONAR', 'json'>;
+  'PATCH /api/users/:id': ApiEndpoint<{ id: UUID }, NoInput, ManagedUserUpdateRequest, ApiMessageSuccess<ManagedUser>, 200, true, 'USUARIO_GESTIONAR', 'json'>;
+  'GET /api/enrollments/cashier': ApiEndpoint<NoInput, ListEnrollmentsQuery, NoInput, ApiPaginatedSuccess<CashierEnrollment>, 200, true, 'PAGO_VALIDAR', 'none'>;
   // applicants
   'GET /api/applicants/me': ApiEndpoint<NoInput, NoInput, NoInput, ApiSuccess<ApplicantDetail>, 200, true, null, 'none'>;
   'PUT /api/applicants/me': ApiEndpoint<NoInput, NoInput, UpdateApplicantProfileMultipart<F>, ApiMessageSuccess<ApplicantMutationResult>, 200, true, null, 'json|multipart'>;
@@ -1198,12 +1268,12 @@ export interface ApiEndpointMap<F = UploadDescriptor> {
   'PUT /api/cohorts/:id/componentes/:componenteId': ApiEndpoint<{ id: UUID; componenteId: UUID }, NoInput, UpdateProgramacionRequest, ApiMessageSuccess<ProgramacionComponenteRow>, 200, true, 'COHORTE_GESTIONAR', 'json'>;
   'DELETE /api/cohorts/:id/componentes/:componenteId': ApiEndpoint<{ id: UUID; componenteId: UUID }, NoInput, NoInput, ApiMessageOnly, 200, true, 'COHORTE_GESTIONAR', 'none'>;
   // enrollments
-  'GET /api/enrollments/me': ApiEndpoint<NoInput, NoInput, NoInput, ApiTotalSuccess<EnrollmentDetail>, 200, true, null, 'none'>;
+  'GET /api/enrollments/me': ApiEndpoint<NoInput, Pick<ListEnrollmentsQuery, 'page' | 'limit'>, NoInput, ApiTotalSuccess<EnrollmentDetail> & { pagination: Pagination }, 200, true, null, 'none'>;
   'PATCH /api/enrollments/payments/:paymentId/validate': ApiEndpoint<{ paymentId: UUID }, NoInput, ValidatePaymentRequest, ApiMessageSuccess<ValidatePaymentResult>, 200, true, 'PAGO_VALIDAR', 'json'>;
   'PATCH /api/enrollments/convalidations/:convalidationId/dictamen': ApiEndpoint<{ convalidationId: UUID }, NoInput, DictamenConvalidationRequest, ApiMessageSuccess<SolicitudConvalidacionRow>, 200, true, 'CONVALIDACION_DICTAMINAR', 'json'>;
   'GET /api/enrollments': ApiEndpoint<NoInput, ListEnrollmentsQuery, NoInput, ApiPaginatedSuccess<EnrollmentDetail>, 200, true, 'INSCRIPCION_VALIDAR', 'none'>;
   'POST /api/enrollments': ApiEndpoint<NoInput, NoInput, CreateEnrollmentMultipart<F>, ApiMessageSuccess<EnrollmentDetail>, 201, true, null, 'json|multipart'>;
-  'GET /api/enrollments/:id': ApiEndpoint<{ id: UUID }, NoInput, NoInput, ApiSuccess<EnrollmentDossier>, 200, true, null, 'none'>;
+  'GET /api/enrollments/:id': ApiEndpoint<{ id: UUID }, NoInput, NoInput, ApiSuccess<EnrollmentDossier | CashierEnrollmentDossier>, 200, true, null, 'none'>;
   'PATCH /api/enrollments/:id/validate-documents': ApiEndpoint<{ id: UUID }, NoInput, ValidateDocumentsRequest, ApiMessageSuccess<EnrollmentDetail>, 200, true, 'INSCRIPCION_VALIDAR', 'json'>;
   'POST /api/enrollments/:id/payments': ApiEndpoint<{ id: UUID }, NoInput, CreatePaymentMultipart<F>, ApiMessageSuccess<PagoInscripcionRow>, 201, true, null, 'json|multipart'>;
   'GET /api/enrollments/:id/payments': ApiEndpoint<{ id: UUID }, NoInput, NoInput, ApiSuccess<PagoInscripcionRow[]>, 200, true, null, 'none'>;
@@ -1336,7 +1406,7 @@ export type ParsedUpdateExpedienteInput = Override<UpdateExpedienteRequest,
 export type ParsedCreatePublicationInput = Override<CreatePublicationRequest,
   { es_revista_indexada: boolean; tiene_revision_pares: boolean }>;
 
-/** Valores sembrados por seed.ts; permisos efectivos siempre se leen de auth.profile/JWT. */
+/** Seed defaults; the API checks current account, session, role and permissions on every protected request. */
 export const SEEDED_ROLE_PERMISSIONS = {
   SUPER_ADMIN: [
     'USUARIO_GESTIONAR',
@@ -1362,7 +1432,7 @@ export const SEEDED_ROLE_PERMISSIONS = {
     'NOTA_MODIFICAR',
     'TITULO_EMITIR',
   ],
-  CAJERO: ['PAGO_VALIDAR', 'INSCRIPCION_VALIDAR'],
+  CAJERO: ['PAGO_VALIDAR'],
   DOCENTE: ['NOTA_IMPORTAR'],
   ESTUDIANTE: [],
 } as const satisfies { [R in RolNombre]: readonly PermisoCodigo[] };

@@ -1,4 +1,7 @@
 import crypto from 'crypto';
+import { readInstitutionalPdf } from './document.validation';
+import { CertificatesService } from '../certificates/certificates.service';
+import { CertificatesDao } from '../certificates/certificates.dao';
 import { GraduationDAO } from './graduation.dao';
 import {
   CreateExpedienteInput,
@@ -69,7 +72,11 @@ export class GraduationService {
       throw new AppError('Expediente de graduación no encontrado', 404);
     }
     const publicaciones = await GraduationDAO.getPublicacionesByExpedienteId(id);
+    const registry = await CertificatesService.optionalForExpediente(expediente.id);
     return {
+      certificado_digital_id: registry.record?.id || null,
+      estado_certificado: registry.record?.estado || null,
+      registro_digital_disponible: registry.available,
       ...expediente,
       publicaciones,
     };
@@ -84,7 +91,11 @@ export class GraduationService {
       throw new AppError('No existe expediente de graduación para esta inscripción', 404);
     }
     const publicaciones = await GraduationDAO.getPublicacionesByExpedienteId(expediente.id);
+    const registry = await CertificatesService.optionalForExpediente(expediente.id);
     return {
+      certificado_digital_id: registry.record?.id || null,
+      estado_certificado: registry.record?.estado || null,
+      registro_digital_disponible: registry.available,
       ...expediente,
       publicaciones,
     };
@@ -191,6 +202,14 @@ export class GraduationService {
         );
       }
 
+      if (context.inscripcion_estado !== EstadoInscripcion.EGRESADO) {
+        throw new AppError('La emisión requiere egreso académico registrado; la matrícula por sí sola no autoriza certificación', 409);
+      }
+      if (!(uploadedDocUrl || data.documento_final_url || context.documento_final_url)) {
+        throw new AppError('Debe adjuntar el documento institucional autorizado antes de emitir', 400);
+      }
+      const institutionalPdf = await readInstitutionalPdf(uploadedDocUrl || data.documento_final_url || context.documento_final_url);
+
       // 2. Validate Language Requirement (SETEC Art. 68, 73, 78)
       const requiredLanguage: NivelIdiomaMcer = context.idioma_egreso_requerido || NivelIdiomaMcer.NINGUNO;
       const requiredRank = MCER_LEVEL_RANK[requiredLanguage] || 0;
@@ -240,13 +259,16 @@ export class GraduationService {
       let codigoRegistro = data.codigo_registro_titulo_emitido?.trim();
       if (!codigoRegistro) {
         const year = new Date().getFullYear();
-        const randToken = crypto.randomBytes(3).toString('hex').toUpperCase();
+        const randToken = crypto.randomBytes(16).toString('hex').toUpperCase();
         const cleanSubtipo = (context.programa_subtipo || 'TIT').replace(/[^A-Z0-9]/g, '');
         codigoRegistro = `SETEC-${cleanSubtipo}-${year}-${randToken}`;
       }
 
       const fechaEmision = data.fecha_emision || new Date().toISOString().split('T')[0];
       const finalDocUrl = uploadedDocUrl || data.documento_final_url || context.documento_final_url;
+
+      // Registry availability is required before the first persisted issuance change.
+      await CertificatesDao.requireAvailable(client);
 
       // 5. Update expediente record
       const updatedExpediente = await GraduationDAO.issueExpedienteDocument(
@@ -260,6 +282,9 @@ export class GraduationService {
         },
         client
       );
+
+      if (!updatedExpediente) throw new AppError('Expediente de graduación no encontrado', 404);
+      await CertificatesService.recordIssuedDocument({ ...context, ...updatedExpediente }, currentUserId, client, institutionalPdf);
 
       // 6. Update student enrollment state to GRADUADO_O_CERTIFICADO
       await GraduationDAO.updateInscripcionEstado(
@@ -293,28 +318,31 @@ export class GraduationService {
       );
     }
 
+    const digital = await CertificatesService.legacyVerification(record.expediente_id);
+    const snapshot = 'snapshot' in digital ? digital.snapshot : null;
     return {
-      autenticidad_verificada: true,
+      autenticidad_verificada: digital.autenticidad_verificada,
+      registro_digital_disponible: digital.registro_digital_disponible,
+      integridad_verificada: digital.integridad_verificada,
+      estado_certificado: digital.estado_certificado,
+      ...('token_publico' in digital ? { token_publico: digital.token_publico } : {}),
       codigo_registro: record.codigo_registro_titulo_emitido,
-      tipo_documento: record.tipo_documento_final,
-      fecha_emision: record.fecha_emision,
+      tipo_documento: snapshot?.tipo_documento || record.tipo_documento_final,
+      fecha_emision: snapshot?.fecha_emision || record.fecha_emision,
       estudiante: {
-        nombres: record.aspirante_nombres,
-        apellidos: record.aspirante_apellidos,
-        tipo_identificacion: record.tipo_identificacion,
-        numero_identificacion: record.numero_identificacion,
+        nombres: snapshot?.titular_nombre || record.aspirante_nombres,
+        apellidos: snapshot ? '' : record.aspirante_apellidos,
       },
       programa: {
-        nombre: record.programa_nombre,
+        nombre: snapshot?.programa_nombre || record.programa_nombre,
         categoria: record.programa_categoria,
         subtipo: record.programa_subtipo,
         titulo_o_certificado_otorgado: record.titulo_o_certificado_otorgado,
       },
       cohorte: {
-        codigo_cohorte: record.codigo_cohorte,
+        codigo_cohorte: snapshot?.cohorte_codigo || record.codigo_cohorte,
         sede: record.nombre_sede,
       },
-      documento_digital_url: record.documento_final_url,
     };
   }
 }

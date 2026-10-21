@@ -216,6 +216,7 @@ export class GraduationDAO {
         i.codigo_expediente,
         i.estado AS inscripcion_estado,
         pa.id AS aspirante_id,
+        pa.usuario_id AS aspirante_usuario_id,
         pa.nombres AS aspirante_nombres,
         pa.apellidos AS aspirante_apellidos,
         pa.numero_identificacion,
@@ -236,6 +237,7 @@ export class GraduationDAO {
       JOIN cohortes_apertura ca ON ca.id = i.cohorte_id
       JOIN programas_academicos pr ON pr.id = ca.programa_id
       WHERE egc.id = $1
+      FOR UPDATE OF egc
     `;
     const result = await db.query(query, [expedienteId]);
     return result.rows[0] || null;
@@ -437,12 +439,12 @@ export class GraduationDAO {
         pr.categoria AS programa_categoria,
         pr.titulo_o_certificado_otorgado,
         ca.codigo_cohorte,
-        s.nombre_sede
+        s.nombre AS nombre_sede
       FROM expediente_graduacion_certificacion egc
       JOIN inscripciones i ON i.id = egc.inscripcion_id
       JOIN personas_aspirantes pa ON pa.id = i.aspirante_id
       JOIN cohortes_apertura ca ON ca.id = i.cohorte_id
-      JOIN sedes_universitarias s ON s.id = ca.sede_id
+      JOIN sedes_ies s ON s.id = ca.sede_id
       JOIN programas_academicos pr ON pr.id = ca.programa_id
       WHERE egc.codigo_registro_titulo_emitido = $1
     `;

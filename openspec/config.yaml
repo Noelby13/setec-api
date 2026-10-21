@@ -1,0 +1,5 @@
+schema: spec-driven
+context: |
+  UNCSM local academic ecosystem: Express/PostgreSQL API, existing React/Vite backoffice, new student portal.
+  API contract is canonical in POSGRADOSETECAPI. Preserve existing admission and payment rules.
+  No invented academic facts, production access, remote operations, deployments or real payments.

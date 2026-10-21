@@ -1,0 +1,3 @@
+- [ ] 1.1 Implement the scoped capability using existing contracts.
+- [ ] 1.2 Execute applicable deterministic checks and record observed results.
+- [ ] 1.3 Synchronize affected contracts and document remaining blockers.

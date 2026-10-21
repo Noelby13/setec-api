@@ -182,6 +182,16 @@ export class EnrollmentDao {
     return result.rows[0] || null;
   }
 
+  static async findByIdForUpdate(id: string, db: DbClient): Promise<InscripcionRecord | null> {
+    const result = await db.query<InscripcionRecord>('SELECT * FROM inscripciones WHERE id = $1 FOR UPDATE', [id]);
+    return result.rows[0] || null;
+  }
+
+  static async findPagoByIdForUpdate(id: string, db: DbClient): Promise<PagoInscripcionRecord | null> {
+    const result = await db.query<PagoInscripcionRecord>('SELECT * FROM pagos_inscripcion WHERE id = $1 FOR UPDATE', [id]);
+    return result.rows[0] || null;
+  }
+
   static async findDetailedById(id: string, db: DbClient = pool): Promise<InscripcionDetailRecord | null> {
     const query = `
       SELECT 

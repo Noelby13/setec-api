@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { pool, withTransaction } from '../../db/pool';
+import { pool, withTransaction, DbClient } from '../../db/pool';
 import { AppError } from '../../middlewares/error.middleware';
 import {
   EnrollmentDao,
@@ -37,6 +37,19 @@ export interface UploadedConvalidationFiles {
 }
 
 export class EnrollmentService {
+  private static async lockEnrollmentContext(enrollmentId: string, client: DbClient) {
+    const initial = await EnrollmentDao.findById(enrollmentId, client);
+    if (!initial) throw new AppError('Inscripción no encontrada', 404);
+    // All administrative transitions use cohort -> enrollment -> receipt lock order.
+    const cohorte = await EnrollmentDao.getCohorteWithProgramForUpdate(initial.cohorte_id, client);
+    if (!cohorte) throw new AppError('Cohorte asociada no encontrada', 404);
+    const inscripcion = await EnrollmentDao.findByIdForUpdate(enrollmentId, client);
+    if (!inscripcion || inscripcion.cohorte_id !== cohorte.id) throw new AppError('La inscripción cambió durante la revisión', 409);
+    if (['CANCELADA', 'FINALIZADA_PENDIENTE_EVAL', 'EVALUADA_SETEC'].includes(cohorte.estado_cohorte)) {
+      throw new AppError(`La cohorte en estado '${cohorte.estado_cohorte}' no admite esta operación`, 409);
+    }
+    return { inscripcion, cohorte };
+  }
   // ==========================================
   // 1. NUEVA INSCRIPCIÓN
   // ==========================================
@@ -205,10 +218,17 @@ export class EnrollmentService {
     input: ValidateDocumentsInput
   ): Promise<InscripcionDetailRecord> {
     return await withTransaction(async (client) => {
-      // 1. Fetch current enrollment
-      const inscripcion = await EnrollmentDao.findById(enrollmentId, client);
-      if (!inscripcion) {
-        throw new AppError('Inscripción no encontrada', 404);
+      const { inscripcion, cohorte } = await this.lockEnrollmentContext(enrollmentId, client);
+      const alreadyApprovedStates: string[] = [
+        EstadoInscripcion.INSCRITO_RESERVADO, EstadoInscripcion.PENDIENTE_PAGO,
+        EstadoInscripcion.PAGO_EN_REVISION, EstadoInscripcion.MATRICULADO_ACTIVO,
+      ];
+      if (input.aprobado && alreadyApprovedStates.includes(inscripcion.estado)) {
+        throw new AppError(`La documentación de esta inscripción ya fue validada previamente (Estado actual: ${inscripcion.estado})`, 400);
+      }
+      const reviewStates: string[] = [EstadoInscripcion.EN_REVISION_DOCUMENTAL, EstadoInscripcion.DOCUMENTACION_OBSERVADA];
+      if (!reviewStates.includes(inscripcion.estado)) {
+        throw new AppError(`La inscripción en estado '${inscripcion.estado}' no admite una decisión documental`, 409);
       }
 
       // If administrative rejection / observation
@@ -226,27 +246,8 @@ export class EnrollmentService {
         return detailed!;
       }
 
-      // Check if already approved/verified to prevent duplicate counter increment
-      const alreadyApprovedStates: string[] = [
-        EstadoInscripcion.INSCRITO_RESERVADO,
-        EstadoInscripcion.PENDIENTE_PAGO,
-        EstadoInscripcion.PAGO_EN_REVISION,
-        EstadoInscripcion.MATRICULADO_ACTIVO,
-      ];
-      if (alreadyApprovedStates.includes(inscripcion.estado)) {
-        throw new AppError(
-          `La documentación de esta inscripción ya fue validada previamente (Estado actual: ${inscripcion.estado})`,
-          400
-        );
-      }
-
-      // a) Bloquea la fila de la cohorte con SELECT * FROM cohortes_apertura WHERE id = $1 FOR UPDATE
-      const cohorte = await EnrollmentDao.getCohorteWithProgramForUpdate(
-        inscripcion.cohorte_id,
-        client
-      );
-      if (!cohorte) {
-        throw new AppError('Cohorte asociada no encontrada', 404);
+      if (cohorte.cupo_maximo !== null && cohorte.cupos_actuales_verificados >= cohorte.cupo_maximo) {
+        throw new AppError('La cohorte no tiene cupos disponibles para aprobar esta solicitud', 409);
       }
 
       // b) Incrementa cupos_actuales_verificados = cupos_actuales_verificados + 1
@@ -312,17 +313,7 @@ export class EnrollmentService {
     uploadedFiles?: UploadedPaymentFiles
   ): Promise<PagoInscripcionRecord> {
     return await withTransaction(async (client) => {
-      // 1. Fetch enrollment
-      const inscripcion = await EnrollmentDao.findById(enrollmentId, client);
-      if (!inscripcion) {
-        throw new AppError('Inscripción no encontrada', 404);
-      }
-
-      // 2. Fetch Cohort to check quorum and cobro_habilitado
-      const cohorte = await EnrollmentDao.getCohorteWithProgram(inscripcion.cohorte_id, client);
-      if (!cohorte) {
-        throw new AppError('Cohorte asociada no encontrada', 404);
-      }
+      const { inscripcion, cohorte } = await this.lockEnrollmentContext(enrollmentId, client);
 
       // Quorum / payment prerequisite check
       if (!cohorte.cobro_habilitado) {
@@ -330,6 +321,10 @@ export class EnrollmentService {
           'El cobro para esta cohorte no está habilitado porque aún no se ha alcanzado el quórum normativo mínimo',
           400
         );
+      }
+
+      if (!inscripcion.fecha_aprobacion_documental) {
+        throw new AppError('La inscripción requiere aprobación documental antes de registrar pagos', 409);
       }
 
       // Enrollment status check
@@ -390,14 +385,25 @@ export class EnrollmentService {
     validatorUserId: string
   ): Promise<{ pago: PagoInscripcionRecord; inscripcion: InscripcionDetailRecord }> {
     return await withTransaction(async (client) => {
-      const pago = await EnrollmentDao.findPagoById(paymentId, client);
-      if (!pago) {
+      const initial = await EnrollmentDao.findPagoById(paymentId, client);
+      if (!initial) {
         throw new AppError('Registro de pago no encontrado', 404);
       }
+      const { inscripcion, cohorte } = await this.lockEnrollmentContext(initial.inscripcion_id, client);
+      const pago = await EnrollmentDao.findPagoByIdForUpdate(paymentId, client);
+      if (!inscripcion || !pago || pago.inscripcion_id !== inscripcion.id) throw new AppError('Registro de pago no encontrado', 404);
 
       if (pago.estado !== EstadoPago.PENDIENTE_REVISION) {
         throw new AppError(`Este pago ya fue dictaminado previamente con estado '${pago.estado}'`, 400);
       }
+
+      const paymentStates: string[] = [EstadoInscripcion.PENDIENTE_PAGO, EstadoInscripcion.PAGO_EN_REVISION,
+        EstadoInscripcion.DOCUMENTACION_OBSERVADA, EstadoInscripcion.MATRICULADO_ACTIVO];
+      if (!inscripcion.fecha_aprobacion_documental || !paymentStates.includes(inscripcion.estado)) {
+        throw new AppError(`La inscripción en estado '${inscripcion.estado}' no admite una decisión de pago`, 409);
+      }
+      if (!cohorte.cobro_habilitado) throw new AppError('El cobro para esta cohorte no está habilitado', 409);
+      const preserveMatriculation = inscripcion.estado === EstadoInscripcion.MATRICULADO_ACTIVO;
 
       let updatedPago: PagoInscripcionRecord | null;
 
@@ -412,7 +418,7 @@ export class EnrollmentService {
         );
 
         // Update enrollment to MATRICULADO_ACTIVO and set fecha_formalizacion_matricula = NOW()
-        await EnrollmentDao.updateInscripcionEstado(
+        if (!preserveMatriculation) await EnrollmentDao.updateInscripcionEstado(
           pago.inscripcion_id,
           EstadoInscripcion.MATRICULADO_ACTIVO,
           { fechaFormalizacionMatricula: true },
@@ -429,7 +435,7 @@ export class EnrollmentService {
         );
 
         // Revert enrollment to PENDIENTE_PAGO so applicant can re-submit
-        await EnrollmentDao.updateInscripcionEstado(
+        if (!preserveMatriculation) await EnrollmentDao.updateInscripcionEstado(
           pago.inscripcion_id,
           EstadoInscripcion.PENDIENTE_PAGO,
           { observaciones: input.motivo_rechazo || 'Comprobante de pago rechazado por tesorería' },

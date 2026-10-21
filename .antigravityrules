@@ -1,0 +1,18 @@
+# Reglas de Arquitectura del Proyecto API SNEPA-SETEC
+
+## 1. Stack Tecnológico Estricto
+- Runtime y Lenguaje: Node.js con TypeScript estricto.
+- Framework Web: Express.js.
+- Base de Datos: PostgreSQL levantado en Docker (`database/init.sql`).
+- Driver de BD: `pg` (`node-postgres`) usando `Pool` y `PoolClient`. **ESTÁ ESTRICTAMENTE PROHIBIDO USAR ORMs (Prisma, TypeORM, Sequelize, Drizzle, Knex). Todo el SQL debe escribirse de forma nativa y parametrizada ($1, $2, etc.).**
+- Validación de datos: `zod` mediante un middleware reutilizable.
+- Archivos: `multer` almacenando en disco local de la máquina virtual dentro de la carpeta `./uploads/<categoria>/` y guardando únicamente rutas relativas en la base de datos (ej. `/uploads/bauchers/archivo.pdf`).
+- Procesamiento de Excel: `exceljs`.
+
+## 2. Patrón de Diseño por Módulo (`src/modules/<nombre_modulo>/`)
+Cada módulo debe contener exactamente estas capas con responsabilidades separadas:
+1. `<modulo>.schema.ts`: Esquemas de validación con `zod` y tipos inferidos (`z.infer`).
+2. `<modulo>.dao.ts`: Clases o funciones estáticas con **SOLO consultas SQL puras**. Todo método de escritura o lectura crítica debe aceptar un parámetro opcional `db: Pool | PoolClient = pool` para poder participar en transacciones iniciadas por la capa Service. Prohibido poner lógica de negocio aquí.
+3. `<modulo>.service.ts`: Toda la lógica de negocio, validaciones normativas SETEC, manejo de estados y orquestación de transacciones usando el helper `withTransaction(async (client) => { ... })`.
+4. `<modulo>.controller.ts`: Recibe `req` y `res`, extrae payloads o rutas relativas de `req.file`, llama al `Service` y devuelve respuestas JSON estandarizadas.
+5. `<modulo>.routes.ts`: Definición de endpoints Express inyectando middlewares de autenticación (`requireAuth`), permisos (`requirePermission`), subida (`upload`) y validación (`validateSchema`).

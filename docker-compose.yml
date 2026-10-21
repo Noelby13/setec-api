@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: posgrado_setec_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-posgrado_admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-posgrado_secret_2026}
+      POSTGRES_DB: ${DB_NAME:-posgrado_setec_db}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+
+volumes:
+  postgres_data:
+    name: posgrado_setec_pgdata

@@ -1,0 +1,508 @@
+### ==============================================================================
+### POSGRADO-SETEC-API: SUITE DE PRUEBAS END-TO-END (REST CLIENT)
+### ==============================================================================
+### Flujo completo de ciclo de vida académico conforme a Normativa SETEC y SNEPA:
+### 1. Login Admin & Perfil
+### 2. Taxonomía (Área y Tag)
+### 3. Infraestructura (Sede Universitaria y Docente)
+### 4. Oferta Académica (Programa y Componente Curricular)
+### 5. Cohorte (Apertura y Programación Modular de Asignatura)
+### 6. Aspirante y Título de Grado Previo (Validación RN y Verificación Identidad)
+### 7. Inscripción & Quórum Transaccional (Aprobación Documental)
+### 8. Arancel / Matrícula (Carga de Baucher y Validación por Caja)
+### 9. Calificaciones SNEPA (Importación Excel, Modificación Manual y Auditoría)
+### 10. Graduación y Titulación (Expediente, Publicación Científica y Verificación QR)
+### ==============================================================================
+
+@baseUrl = http://localhost:3000/api
+@adminEmail = admin@setec.edu.ni
+@adminPassword = Admin123*
+
+### ------------------------------------------------------------------------------
+### 1. HEALTH CHECK & ESTADO DE SERVICIOS
+### ------------------------------------------------------------------------------
+
+# @name healthCheck
+GET {{baseUrl}}/health
+Content-Type: application/json
+
+### ------------------------------------------------------------------------------
+### 2. AUTENTICACIÓN ADMIN (Obtención de JWT Token)
+### ------------------------------------------------------------------------------
+
+# @name loginAdmin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "{{adminEmail}}",
+  "password": "{{adminPassword}}"
+}
+
+### Extraer Token y variables dinámicas
+@token = {{loginAdmin.response.body.data.tokens.accessToken}}
+@refreshToken = {{loginAdmin.response.body.data.tokens.refreshToken}}
+
+###
+
+# @name getMyProfile
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{token}}
+
+### ------------------------------------------------------------------------------
+### 3. TAXONOMÍA ACADÉMICA (Área de Conocimiento y Etiquetas)
+### ------------------------------------------------------------------------------
+
+# @name createArea
+POST {{baseUrl}}/taxonomy/areas
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Ciencias Médicas y de la Salud",
+  "slug": "ciencias-medicas-salud-snepa",
+  "icono_url": "https://cdn.setec.edu.ni/icons/health.svg",
+  "activa": true
+}
+
+###
+@areaId = {{createArea.response.body.data.id}}
+
+# @name createTag
+POST {{baseUrl}}/taxonomy/tags
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nombre": "Epidemiología Avanzada",
+  "slug": "epidemiologia-avanzada"
+}
+
+###
+@tagId = {{createTag.response.body.data.id}}
+
+# @name listAreas
+GET {{baseUrl}}/taxonomy/areas
+Authorization: Bearer {{token}}
+
+### ------------------------------------------------------------------------------
+### 4. INFRAESTRUCTURA Y CLAUSTRO DOCENTE (SETEC Art. 22-28)
+### ------------------------------------------------------------------------------
+
+# @name createSede
+POST {{baseUrl}}/infrastructure/sedes
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "codigo_sede": "SEDE-MGA-CENTRAL",
+  "nombre": "Sede Central Universitaria Managua",
+  "tipo_sede": "SEDE_CENTRAL",
+  "resolucion_autorizacion_setec": "RES-SETEC-2024-0012",
+  "direccion": "Costado Oeste Rotonda Universitaria, Managua, Nicaragua",
+  "activa": true
+}
+
+###
+@sedeId = {{createSede.response.body.data.id}}
+
+# @name createDocente
+POST {{baseUrl}}/infrastructure/docentes
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "identificacion": "001-120575-0021A",
+  "nombres": "Dr. Guillermo Antonio",
+  "apellidos": "González López",
+  "maximo_grado_academico": "DOCTOR",
+  "biografia_comercial": "Doctor en Epidemiología y Salud Pública con 20 años de experiencia.",
+  "activo": true
+}
+
+###
+@docenteId = {{createDocente.response.body.data.id}}
+
+# @name listDocentes
+GET {{baseUrl}}/infrastructure/docentes
+Authorization: Bearer {{token}}
+
+### ------------------------------------------------------------------------------
+### 5. CATÁLOGO DE PROGRAMAS Y MALLA CURRICULAR
+### ------------------------------------------------------------------------------
+
+# @name createProgram
+POST {{baseUrl}}/programs
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "codigo_interno": "MGS-2026-SETEC",
+  "codigo_dictamen_setec": "DICT-SETEC-2025-089",
+  "fecha_aprobacion_setec": "2025-11-20",
+  "nombre": "Maestría en Gestión y Epidemiología de Salud Pública",
+  "slug": "maestria-gestion-epidemiologia-salud-publica-2026",
+  "categoria": "POSGRADO",
+  "subtipo": "MAESTRIA_PROFESIONAL",
+  "area_conocimiento_id": "{{areaId}}",
+  "resumen_corto_web": "Formación de alto nivel para líderes en gestión sanitaria y prevención epidemiológica.",
+  "descripcion_comercial": "Programa acreditado bajo rigor SETEC y SNEPA con pasantías especializadas.",
+  "precio_total_referencia": 3600,
+  "descuento_porcentaje": 10,
+  "visible_en_web": true,
+  "es_ciencias_salud": true,
+  "duracion_meses": 24,
+  "horas_totales": 1200,
+  "creditos_totales": 60,
+  "creditos_investigacion": 15,
+  "requiere_titulo_grado_rn": true,
+  "idioma_egreso_requerido": "B1",
+  "num_publicaciones_requeridas": 1,
+  "requiere_revista_indexada": true,
+  "titulo_o_certificado_otorgado": "Máster en Gestión y Epidemiología de Salud Pública",
+  "abreviatura_grado": "M.Sc."
+}
+
+###
+@programId = {{createProgram.response.body.data.id}}
+
+# @name assignTagsToProgram
+POST {{baseUrl}}/programs/{{programId}}/tags
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tag_ids": ["{{tagId}}"]
+}
+
+###
+
+# @name createComponenteMalla
+POST {{baseUrl}}/programs/{{programId}}/componentes
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "codigo": "MOD-EPI-01",
+  "nombre": "Bioestadística y Epidemiología Aplicada",
+  "descripcion_temario": "Modelos probabilísticos, análisis multivariado y diseño de estudios epidemiológicos.",
+  "orden_bloque": 1,
+  "horas": 60,
+  "creditos": 4,
+  "es_investigacion": false,
+  "costo_base_asignatura": 250
+}
+
+###
+@componenteId = {{createComponenteMalla.response.body.data.id}}
+
+# @name getPublicCatalog
+GET {{baseUrl}}/programs/catalog?categoria=POSGRADO
+
+### ------------------------------------------------------------------------------
+### 6. COHORTES Y PROGRAMACIÓN MODULAR (Control de Quórum y Horarios)
+### ------------------------------------------------------------------------------
+
+# @name createCohort
+POST {{baseUrl}}/cohorts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "programa_id": "{{programId}}",
+  "sede_id": "{{sedeId}}",
+  "modalidad": "SEMIPRESENCIAL",
+  "codigo_cohorte": "MGS-2026-I-MGA",
+  "numero_edicion": 1,
+  "coordinador_id": "{{docenteId}}",
+  "fecha_inicio_inscripcion": "2026-01-01",
+  "fecha_fin_inscripcion": "2026-03-01",
+  "fecha_inicio_clases": "2026-03-15",
+  "fecha_fin_clases": "2028-03-15",
+  "horario_general": "Sábados de 8:00 AM a 2:00 PM",
+  "precio_matricula": 150,
+  "precio_total_cohorte": 3600,
+  "cupo_minimo": 2,
+  "cupo_maximo": 30,
+  "estado_cohorte": "INSCRIPCION_ABIERTA"
+}
+
+###
+@cohortId = {{createCohort.response.body.data.id}}
+
+# @name programarComponenteEnCohorte
+POST {{baseUrl}}/cohorts/{{cohortId}}/componentes
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "componente_id": "{{componenteId}}",
+  "docente_titular_id": "{{docenteId}}",
+  "fecha_inicio": "2026-03-15",
+  "fecha_fin": "2026-04-30",
+  "horario": "Sábados de 8:00 AM a 1:00 PM",
+  "aula": "Aula Magna 2 - Ciencias de la Salud",
+  "codigo_aula_virtual_externa": "MOODLE-EPI-01"
+}
+
+###
+@programacionComponenteId = {{programarComponenteEnCohorte.response.body.data.id}}
+
+### ------------------------------------------------------------------------------
+### 7. ASPIRANTES Y TÍTULOS PREVIOS (Verificación RN y SETEC Art. 86)
+### ------------------------------------------------------------------------------
+
+# @name createApplicant
+POST {{baseUrl}}/applicants
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tipo_identificacion": "CEDULA",
+  "numero_identificacion": "001-150890-0045V",
+  "nombres": "Carlos Alberto",
+  "apellidos": "Morales Ruiz",
+  "fecha_nacimiento": "1990-08-15",
+  "email": "carlos.morales.test@setec.edu.ni",
+  "telefono": "+50588997766",
+  "tiene_discapacidad": false
+}
+
+###
+@applicantId = {{createApplicant.response.body.data.id}}
+
+# @name verifyApplicantIdentity
+PATCH {{baseUrl}}/applicants/{{applicantId}}/verify-identity
+Authorization: Bearer {{token}}
+
+###
+
+# @name registerDegree
+POST {{baseUrl}}/applicants/{{applicantId}}/degrees
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "area_conocimiento_id": "{{areaId}}",
+  "nivel_titulo": "GRADO",
+  "denominacion_titulo": "Licenciado en Medicina y Cirugía General",
+  "institucion_emisora": "Universidad Nacional de Nicaragua",
+  "fecha_emision": "2015-11-25",
+  "inscrito_registro_nacional": true,
+  "codigo_registro_nacional": "RN-MED-2015-9988",
+  "porcentaje_creditos_investigacion": 12
+}
+
+###
+@degreeId = {{registerDegree.response.body.data.id}}
+
+# @name validateDegreeAdmin
+PATCH {{baseUrl}}/applicants/degrees/{{degreeId}}/validate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "estado_validacion": "VALIDADO"
+}
+
+### ------------------------------------------------------------------------------
+### 8. INSCRIPCIÓN Y QUÓRUM TRANSACCIONAL
+### ------------------------------------------------------------------------------
+
+# @name createEnrollment
+POST {{baseUrl}}/enrollments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "aspirante_id": "{{applicantId}}",
+  "cohorte_id": "{{cohortId}}",
+  "titulo_presentado_id": "{{degreeId}}",
+  "rol_participacion": "ESTUDIANTE_EVALUADO"
+}
+
+###
+@enrollmentId = {{createEnrollment.response.body.data.id}}
+@codigoExpediente = {{createEnrollment.response.body.data.codigo_expediente}}
+
+# @name validateDocumentsAndQuorum
+PATCH {{baseUrl}}/enrollments/{{enrollmentId}}/validate-documents
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "aprobado": true,
+  "observaciones_administracion": "Documentos validados según requerimientos SETEC Art. 60"
+}
+
+### ------------------------------------------------------------------------------
+### 9. PAGOS Y COMPROBANTES DE ARANCEL (Caja SETEC)
+### ------------------------------------------------------------------------------
+
+# @name registerPaymentVoucher
+POST {{baseUrl}}/enrollments/{{enrollmentId}}/payments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "metodo_pago": "BAUCHER_BANCARIO",
+  "numero_referencia_o_recibo": "BAC-REF-2026-99001",
+  "banco_origen": "BAC Credomatic Nicaragua",
+  "monto_subtotal": 150,
+  "descuento_aplicado": 0,
+  "total_pagado": 150,
+  "concepto": "Pago Matrícula Ordinaria Cohorte MGS-2026-I",
+  "fecha_pago_reportada": "2026-01-20"
+}
+
+###
+@paymentId = {{registerPaymentVoucher.response.body.data.id}}
+
+# @name validatePaymentByCashier
+PATCH {{baseUrl}}/enrollments/payments/{{paymentId}}/validate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "estado": "APROBADO"
+}
+
+### ------------------------------------------------------------------------------
+### 10. CALIFICACIONES SNEPA (Importación Excel, Modificación y Auditoría)
+### ------------------------------------------------------------------------------
+
+# @name importGradesExcel
+POST {{baseUrl}}/grades/import/{{programacionComponenteId}}
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryExcelSnepa
+
+------WebKitFormBoundaryExcelSnepa
+Content-Disposition: form-data; name="archivo_excel"; filename="plantilla_acta_snepa.xlsx"
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+< ./uploads/actas_excel/plantilla_acta_snepa.xlsx
+------WebKitFormBoundaryExcelSnepa
+Content-Disposition: form-data; name="observaciones"
+
+Acta de calificaciones finales Módulo I SNEPA
+------WebKitFormBoundaryExcelSnepa--
+
+###
+
+# @name getGradesByComponent
+GET {{baseUrl}}/grades/component/{{programacionComponenteId}}
+Authorization: Bearer {{token}}
+
+###
+@matriculaComponenteId = {{getGradesByComponent.response.body.data[0].id}}
+
+# @name modifyGradeManualWithAudit
+PATCH {{baseUrl}}/grades/{{matriculaComponenteId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "motivo_modificacion": "Ajuste posterior a revisión formal de informe epidemiológico de campo.",
+  "calificacion_cuantitativa": 98.0,
+  "valoracion_cualitativa": "APRENDIZAJE_AVANZADO",
+  "observacion_acompanamiento_pedagogico": "Desempeño sobresaliente con publicación recomendada."
+}
+
+###
+
+# @name getGradeAuditLogs
+GET {{baseUrl}}/grades/{{matriculaComponenteId}}/logs
+Authorization: Bearer {{token}}
+
+###
+
+# @name getStudentKardex
+GET {{baseUrl}}/grades/student/{{enrollmentId}}
+Authorization: Bearer {{token}}
+
+### ------------------------------------------------------------------------------
+### 11. EXPEDIENTE DE GRADUACIÓN, INVESTIGACIÓN Y VERIFICACIÓN QR
+### ------------------------------------------------------------------------------
+
+# @name createGraduationExpediente
+POST {{baseUrl}}/graduation/expediente
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "inscripcion_id": "{{enrollmentId}}",
+  "tipo_documento_final": "TITULO_POSGRADO",
+  "idioma_acreditado": "Inglés Técnico Médico",
+  "nivel_idioma_alcanzado": "B1",
+  "institucion_aval_idioma": "Centro de Idiomas Extranjeros Universitario",
+  "modalidad_graduacion_tipo": "TESIS_EPIDEMIOLOGICA",
+  "titulo_trabajo_graduacion": "Vigilancia Epidemiológica de Arbovirosis en el Corredor Seco de Nicaragua",
+  "aplico_salida_intermedia": false
+}
+
+###
+@expedienteId = {{createGraduationExpediente.response.body.data.id}}
+
+# @name registerScientificPublication
+POST {{baseUrl}}/graduation/expediente/{{expedienteId}}/publications
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tipo_publicacion": "ARTICULO_CIENTIFICO",
+  "titulo_publicacion": "Patrones espacio-temporales del Dengue en Managua: Un enfoque comunitario",
+  "nombre_revista_o_medio": "Revista Panamericana de Salud Pública",
+  "es_revista_indexada": true,
+  "tiene_revision_pares": true,
+  "alcance": "INTERNACIONAL",
+  "url_o_doi": "https://doi.org/10.26633/RPSP.2026.42"
+}
+
+###
+@publicationId = {{registerScientificPublication.response.body.data.id}}
+
+# @name validateScientificPublication
+PATCH {{baseUrl}}/graduation/publications/{{publicationId}}/validate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "validado_coordinacion": true
+}
+
+###
+
+# @name updateExpedienteRequisitos
+PATCH {{baseUrl}}/graduation/expediente/{{expedienteId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idioma_validado": true
+}
+
+###
+
+# @name issueOfficialDegree
+POST {{baseUrl}}/graduation/expediente/{{expedienteId}}/issue
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "codigo_registro_titulo_emitido": "SETEC-POS-2026-0001",
+  "fecha_emision": "2026-12-15",
+  "tipo_documento_final": "TITULO_POSGRADO"
+}
+
+###
+@codigoRegistroEmitido = {{issueOfficialDegree.response.body.data.codigo_registro_titulo_emitido}}
+
+### ------------------------------------------------------------------------------
+### 12. VERIFICACIÓN PÚBLICA QR (Acceso público sin JWT)
+### ------------------------------------------------------------------------------
+
+# @name verifyDegreePublicQR
+GET {{baseUrl}}/graduation/verify/{{codigoRegistroEmitido}}
+Content-Type: application/json
+
+###

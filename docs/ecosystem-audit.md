@@ -22,3 +22,9 @@ The original backend has no automated test command. Frontend has Vitest and Play
 - The existing cashier seed grants admission validation. New seed defaults and an explicit optional data migration must separate these permissions without silently changing a real database.
 
 Implementation specification: `odd/tasks/uncsm-ecosystem.md`. OpenSpec changes are under `openspec/changes/01-*` through `08-*` and retain verifiable acceptance scenarios.
+
+## Implemented follow-up
+
+The table and gaps above describe the inspected baseline. The implementation now includes a linked certificate registry with immutable snapshots, PDF hashes, separate revocation permission and audit events. Existing official PDFs remain institutional inputs; no official design or academic completion rule was invented. The observed grade, grade-audit, applicant-interest and public-verification SQL mismatches were corrected and exercised against disposable PostgreSQL. Cashier discovery and seed defaults were separated from admissions, with an optional reviewed migration for an existing database.
+
+Final deterministic checks passed: API 101, backoffice 153 and portal 45 tests, all three production builds, 11 fixture browser scenarios and 8 strict OpenSpec changes. Independent PostgreSQL checks and the parent's retained-runner replay passed. Actual connected browser acceptance passed its final six stages against the API and both frontends; public/account/certificate UI stages and fixture boundaries are preserved in the evidence guide. See `docs/ECOSYSTEM_DELIVERY.md` for current endpoints, migrations, commits, execution commands and institutional inputs still required.

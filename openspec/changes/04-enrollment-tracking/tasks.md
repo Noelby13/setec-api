@@ -1,3 +1,3 @@
-- [ ] 1.1 Implement the scoped capability using existing contracts.
-- [ ] 1.2 Execute applicable deterministic checks and record observed results.
-- [ ] 1.3 Synchronize affected contracts and document remaining blockers.
+- [x] 1.1 Reuse existing admission/quorum/payment transitions; enforce ownership, open cohorts and duplicate prevention.
+- [x] 1.2 Verify safe attachments, complete own-history pagination and role/program filters against PostgreSQL.
+- [x] 1.3 Complete the connected applicant-to-administration browser journey.

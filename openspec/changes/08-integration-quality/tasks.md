@@ -1,3 +1,3 @@
-- [ ] 1.1 Implement the scoped capability using existing contracts.
-- [ ] 1.2 Execute applicable deterministic checks and record observed results.
-- [ ] 1.3 Synchronize affected contracts and document remaining blockers.
+- [x] 1.1 Run deterministic suites and production builds in all three projects; retain guarded disposable PostgreSQL integration runner.
+- [x] 1.2 Finish real connected browser journeys and record exact coverage or remaining gaps.
+- [x] 1.3 Synchronize all contracts, validate all OpenSpec changes and publish the local execution/evidence guide.

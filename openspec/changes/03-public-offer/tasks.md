@@ -1,3 +1,3 @@
-- [ ] 1.1 Implement the scoped capability using existing contracts.
-- [ ] 1.2 Execute applicable deterministic checks and record observed results.
-- [ ] 1.3 Synchronize affected contracts and document remaining blockers.
+- [x] 1.1 Build the public catalog, real filters/details and distinct publication/availability/open-enrollment states.
+- [x] 1.2 Preserve selected cohort through login and registration; verify deterministic and fixture-browser cases.
+- [x] 1.3 Complete the connected browser journey against the isolated API and PostgreSQL.

@@ -1,3 +1,3 @@
-- [ ] 1.1 Implement the scoped capability using existing contracts.
-- [ ] 1.2 Execute applicable deterministic checks and record observed results.
-- [ ] 1.3 Synchronize affected contracts and document remaining blockers.
+- [x] 1.1 Add immutable PDF-backed registry, random public tokens, minimal public verification, controlled revocation and audit history.
+- [x] 1.2 Verify real PostgreSQL academic gates, owner downloads, hashes, atomic rollback and concurrency independently and replay from the parent.
+- [x] 1.3 Finish connected issuance/download/public/revocation browser verification and final contract synchronization.

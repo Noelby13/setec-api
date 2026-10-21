@@ -1,3 +1,3 @@
-- [ ] 1.1 Implement the scoped capability using existing contracts.
-- [ ] 1.2 Execute applicable deterministic checks and record observed results.
-- [ ] 1.3 Synchronize affected contracts and document remaining blockers.
+- [x] 1.1 Provide student-only public registration, live session/account checks and controlled administrative users.
+- [x] 1.2 Verify privilege injection, role subset, deactivation and session revocation with deterministic and isolated PostgreSQL checks.
+- [x] 1.3 Synchronize final canonical contracts and record local commits.

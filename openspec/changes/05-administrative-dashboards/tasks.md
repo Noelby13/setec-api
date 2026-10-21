@@ -1,3 +1,3 @@
-- [ ] 1.1 Implement the scoped capability using existing contracts.
-- [ ] 1.2 Execute applicable deterministic checks and record observed results.
-- [ ] 1.3 Synchronize affected contracts and document remaining blockers.
+- [x] 1.1 Integrate real permission-scoped dashboards, user management and program/cohort/state filters.
+- [x] 1.2 Provide cashier-only discovery and teacher assignment enforcement; verify API restrictions and UI suites.
+- [x] 1.3 Record connected browser results and final local commit identities.

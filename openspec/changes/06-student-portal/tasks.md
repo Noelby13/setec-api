@@ -1,3 +1,3 @@
-- [ ] 1.1 Implement the scoped capability using existing contracts.
-- [ ] 1.2 Execute applicable deterministic checks and record observed results.
-- [ ] 1.3 Synchronize affected contracts and document remaining blockers.
+- [x] 1.1 Provide own profile, degree corrections, applications, active/history views, recorded progress and upcoming scheduled periods.
+- [x] 1.2 Verify complete pagination, safe sessions/downloads and truthful loading/error/empty states; portal45 tests and build pass.
+- [x] 1.3 Finish connected browser and final visual verification with isolated fixture data.

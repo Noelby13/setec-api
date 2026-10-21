@@ -1,0 +1,135 @@
+{
+  "scope": "Local isolated functional verification; no deployment or native review receipt.",
+  "deterministic": {
+    "api": 101,
+    "backoffice": 153,
+    "portal": 45,
+    "builds": "All three passed"
+  },
+  "fixtureBrowser": {
+    "backoffice": 8,
+    "portal": 3,
+    "note": "API interception; distinct from the real connected checks."
+  },
+  "publicAndCertificateJourney": {
+    "steps": [
+      {
+        "name": "UI public catalog, program detail, open cohort and account-only registration retain selected cohort",
+        "passed": true
+      },
+      {
+        "name": "UI create own applicant profile, upload prior title, submit selected application and observe documentary review",
+        "passed": true
+      },
+      {
+        "name": "UI admin login, operational dashboard and real user directory",
+        "passed": true
+      },
+      {
+        "name": "UI administrative documentary validation reaches actual quorum and pending payment",
+        "passed": false,
+        "error": "locator.fill: Timeout 8000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('textbox', { name: 'Buscar', exact: true })\u001b[22m\n"
+      },
+      {
+        "name": "UI cashier-only dashboard and restricted navigation",
+        "passed": true
+      },
+      {
+        "name": "UI admin creates graduation dossier and issues existing fixture PDF atomically",
+        "passed": true
+      },
+      {
+        "name": "UI owner certificate list, authenticated PDF download and exact SHA-256",
+        "passed": true
+      },
+      {
+        "name": "UI public valid and missing token states through actual API",
+        "passed": true
+      },
+      {
+        "name": "UI explicit administrative revocation changes public state and blocks owner download",
+        "passed": true
+      }
+    ],
+    "cleanup": {
+      "browser": true,
+      "servers": true,
+      "pool": true,
+      "container": true
+    },
+    "note": "The searchbox locator failure was a harness error; final admission/payment replay separately passed. Actual PDF issuance/download/hash verification, public valid/missing/revoked pages and revoked download409 were observed in successful stages."
+  },
+  "finalConnectedReplay": {
+    "complete": true,
+    "mockHttp": false,
+    "steps": [
+      {
+        "name": "API fixture prepares an existing own application for the targeted admission/payment recheck",
+        "passed": true
+      },
+      {
+        "name": "UI admin login, operational dashboard and real user directory",
+        "passed": true
+      },
+      {
+        "name": "UI administrative documentary validation reaches actual quorum and pending payment",
+        "passed": true
+      },
+      {
+        "name": "UI cashier-only dashboard and restricted navigation",
+        "passed": true
+      },
+      {
+        "name": "UI cashier records and approves fixture-only payment; student sees real active enrollment",
+        "passed": true
+      },
+      {
+        "name": "UI finished history and actual grade reflect an explicit isolated EGRESADO fixture",
+        "passed": true
+      }
+    ],
+    "sourceHashes": {
+      "POSGRADOSETECAPI/src/modules/enrollments/enrollment.service.ts": "a1ad01badc9909c79a33e8732be5cb4b1e0ee23ac4679381cf792b9faa02946b",
+      "setecweb/src/features/admissions/CashierPage.jsx": "8d9e11479ddc66fac70fe5e539aea8d152f644720aed2e74c41a804b65dd81da",
+      "setecportal/src/pages/Student.jsx": "a3fe98c2bc5ccb90fffd5698e18ef8ad7c0c97e710e9e12652379745daf40c24"
+    },
+    "baseline": {
+      "POSGRADOSETECAPI": "a11fca07774c96fa5d658b7ad671eb10037ffb3b",
+      "setecweb": "bc34f663e30f7ee61ef4d3f7c55892a3c826836b",
+      "setecportal": "f8295b7ace0526c160508d74fddb32b66a5ca1e7"
+    },
+    "pageErrors": [],
+    "httpErrors": [],
+    "cleanup": {
+      "browser": true,
+      "servers": true,
+      "pool": true,
+      "container": true
+    },
+    "recordedGrade": "90.00",
+    "fixtures": [
+      "New uncsm_test PostgreSQL database, roles/admin/cashier, published EP program and open cohort, 14 prevalidated reservation fixtures to satisfy the existing quorum of 15, one real modeled component/schedule.",
+      "Targeted recheck starts with registration/profile/application created through real HTTP API; their UI traversal was already observed in the previous retained run.",
+      "Only the finished-history check uses SQL academic prerequisite EGRESADO and an approved component grade; this is not an automatic academic decision."
+    ]
+  },
+  "institutionalInputs": [
+    "Academic criteria and authorized process for EGRESADO",
+    "Speaker committee resolution and waiting-list promotion procedure",
+    "Official PDF artwork/signature and additional revocation authority",
+    "Recovery email delivery service"
+  ],
+  "unavailableProof": [
+    "Engram recovery mirror",
+    "Native gentle-ai review assessment/receipt"
+  ],
+  "screenshots": [
+    "screenshots/public-catalog-mobile.png",
+    "screenshots/public-program.png",
+    "screenshots/public-revoked-certificate.png",
+    "screenshots/student-certificate.png",
+    "screenshots/student-finished-history.png",
+    "screenshots/student-recorded-results.png"
+  ],
+  "validationFollowUp": "Malformed documentary values rejected 400 without target-row changes; valid boolean/multipart/default compatibility independently verified in PostgreSQL after the connected replay."
+}

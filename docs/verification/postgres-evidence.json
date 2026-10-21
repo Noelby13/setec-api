@@ -1,0 +1,31 @@
+{
+  "certificates": {
+    "complete": true,
+    "checks": [
+      "missing registry fails issuance before any write; legacy verification explicitly unavailable",
+      "migration is idempotent; legacy registration and audit are atomic and duplicate-safe",
+      "issuance, audit and enrollment are atomic; snapshot is immutable; owner and public privacy enforced",
+      "tampering and static bypass fail closed; dedicated revocation permission, atomic audit and concurrent revoke enforced",
+      "independent PostgreSQL user role filter/count, unchanged unfiltered list, degree empty no-op, forbidden state and edit revalidation",
+      "independent enrolled/language/publication gates preserve data; concurrent issue creates exactly one registry/audit; program snapshot immutable",
+      "independent PostgreSQL enrollment program filter/count and unfiltered compatibility; grade audit joins real role"
+    ]
+  },
+  "transitionsAndValidation": {
+    "complete": true,
+    "checks": [
+      "concurrent document approval once; finalized/withdrawn/committee/waitlist/full/closed transitions reject without changes",
+      "normal observation/reservation/quorum/payment succeeds; rejecting extra receipt preserves matriculation and exact date",
+      "simultaneous receipt approval/rejection has one decision and coherent state; own approval/quorum required; finished accounts cannot reactivate",
+      "malformed documentary values return400 without changes; valid booleans/multipart strings and omission preserve existing outcomes"
+    ]
+  },
+  "independentInputBaseline": {
+    "complete": true,
+    "checks": [
+      "baseline240ba76 parses all seven malformed values as approval",
+      "all seven malformed actual HTTP decisions return400 and preserve exact enrollment/cohort rows",
+      "JSON booleans, true/false/1/0 strings, normalized string and omitted default preserve real PostgreSQL outcomes"
+    ]
+  }
+}

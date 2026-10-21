@@ -37,8 +37,8 @@ User requirement (verbatim): "Utiliza datos de prueba aislados. Nunca ejecutes c
 Authorized scope and acceptance: Contract copies are checked automatically; local unit/build/isolated HTTP and frontend flow results and remaining integration gaps are documented honestly.
 
 ## Tasks
-- [ ] T1 → S1; route: inline; status: pending; commit: pending. Parent owns coordination, documentation and seams.
-- [ ] T2 → S2; route: delegated; status: pending; commit: pending. Writer trigger: parallel disjoint backend and new-portal units.
+- [x] T1 → S1; route: inline; status: audited and OpenSpec validated; commit: 34eefd4. Parent owns coordination, documentation and seams.
+- [ ] T2 → S2; route: delegated; status: implemented, isolated HTTP and PostgreSQL independently verified; commit: pending. Writer trigger: parallel disjoint backend and new-portal units.
 - [ ] T3 → S3; route: delegated; status: pending; commit: pending. Writer trigger: parallel disjoint backend and new-portal units.
 - [ ] T4 → S4; route: delegated; status: pending; commit: pending. Writer trigger: parallel disjoint backend and new-portal units.
 - [ ] T5 → S5; route: inline; status: pending; commit: pending. Parent owns coordination, documentation and seams.
@@ -674,3 +674,9 @@ Al finalizar, presenta:
 Both repositories were inspected before source edits. API baseline 6678f3d on Main; backoffice baseline 91cbb79 on feat/uncsm-backoffice; both clean. New feature branches created in each. Independent repository boundaries are retained. No extra user-owned chat is created.
 Existing catalog, cohorts, applications, payments, grades and graduation dossiers will be reused. No official certificate template or revocation policy has been established. PostgreSQL integration availability remains unproven; tests must not touch configured real data.
 No project skill registry or Engram tools are available. Engram mirror odd/uncsm-ecosystem/tasks: PENDING (provider unavailable); this local document is the recovery source. gentle-ai is unavailable: native assessment/review unavailable, never treated as PASS. Independent security verification remains required.
+
+### L3 — Verified implementation and bounded correction
+Public registration, self-account editing and controlled administrative users were implemented by the identity worker. Its own 23 identity checks and TypeScript build passed. Parent ownership/application/file-safety checks brought the suite to 48, then pagination and assigned teaching checks to 51. Native gentle-ai assessment is unavailable and treated as high risk; it was not silently skipped as a PASS.
+The independent verifier created a fresh scratch copy and a single isolated cached PostgreSQL container. Real-schema probes confirmed role-injection rejection, application 201/duplicate409/other-user403, own grades200, cashier restrictions and test-only payment approval, live permission removal/deactivation, and baseline-compatible login envelopes. It found private-file SQL using the wrong convalidation column, student URL assignment manufacturing ownership, and acceptance of a nonexistent certificate PDF. One correction batch fixed all three; targeted recheck passed owner200/other403/anonymous401, forged-reference403 without state changes, legitimate upload200, invalidPDF400 without state changes and valid fixture issuance200/minimal verification200. The temporary container was stopped and removed.
+Backend test/data migrations were not applied to the configured project database. Existing default cashier permission cleanup is supplied as an optional reviewed SQL migration, not run automatically. Native review and Engram mirror remain unavailable.
+Backoffice writer observed124 tests/build passed; portal writer25 tests/build passed. Browser checks and final teacher/portal verification are pending. Parent added protected-document download support to existing backoffice client (13 focused client/download checks passed) and retained all existing client tests.

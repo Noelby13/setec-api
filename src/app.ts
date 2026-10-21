@@ -6,6 +6,7 @@ import { pool } from './db/pool';
 import { AppError, errorHandler } from './middlewares/error.middleware';
 
 import { authRouter } from './modules/auth/auth.routes';
+import { usersRouter } from './modules/users/users.routes';
 import { taxonomyRouter } from './modules/taxonomy/taxonomy.routes';
 import { infrastructureRouter } from './modules/infrastructure/infrastructure.routes';
 import { programsRouter } from './modules/programs/program.routes';
@@ -59,6 +60,7 @@ app.get('/api/health', async (_req: Request, res: Response, next: NextFunction):
 
 // Authentication and Security Routes
 app.use('/api/auth', authRouter);
+app.use('/api/users', usersRouter);
 
 // Academic Taxonomy and Recommendations Routes
 app.use('/api/taxonomy', taxonomyRouter);

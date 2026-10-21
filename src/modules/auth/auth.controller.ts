@@ -4,6 +4,16 @@ import { LoginInput, RefreshTokenInput } from './auth.schema';
 import { AppError } from '../../middlewares/error.middleware';
 
 export class AuthController {
+  static async register(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try { res.status(201).json({ success: true, message: 'Student account created', data: await AuthService.register(req.body) }); }
+    catch (error) { next(error); }
+  }
+
+  static async updateProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try { res.json({ success: true, data: await AuthService.updateProfile(req.user!.id, req.body) }); }
+    catch (error) { next(error); }
+  }
+
   /**
    * Handle user login.
    * POST /api/auth/login

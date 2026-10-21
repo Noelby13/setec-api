@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import jwt, { JwtPayload, SignOptions } from 'jsonwebtoken';
 import { AuthDao, UserWithRole } from './auth.dao';
+import { signingSecret } from './auth.config';
+import { RegisterUserInput, SelfProfileInput } from './auth.schema';
 import { AppError } from '../../middlewares/error.middleware';
 
 export interface AuthTokens {
@@ -37,14 +39,36 @@ export interface SessionContext {
 }
 
 export class AuthService {
-  private static readonly ACCESS_TOKEN_SECRET =
-    process.env.JWT_SECRET || 'super_secret_jwt_access_token_key_snepa_setec_2026';
-  private static readonly REFRESH_TOKEN_SECRET =
-    process.env.JWT_REFRESH_SECRET || 'super_secret_jwt_refresh_token_key_snepa_setec_2026';
   private static readonly ACCESS_TOKEN_EXPIRES_IN = '15m';
   private static readonly REFRESH_TOKEN_EXPIRES_IN = '7d';
   private static readonly ACCESS_TOKEN_EXPIRY_SECONDS = 900; // 15 minutes
   private static readonly REFRESH_TOKEN_DAYS = 7;
+
+  static async register(input: RegisterUserInput): Promise<UserProfileResponse> {
+    const role = await AuthDao.findRoleByName('ESTUDIANTE');
+    if (!role) throw new AppError('Student registration is unavailable: ESTUDIANTE role is not configured', 503);
+    try {
+      const user = await AuthDao.createUser({
+        email: input.email, username: input.username, nombres: input.nombres,
+        apellidos: input.apellidos, telefono: input.telefono,
+        password_hash: await bcrypt.hash(input.password, 12), rol_id: role.id,
+        activo: true, email_verificado: false,
+      });
+      return this.getProfile(user.id);
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') throw new AppError('Email or username is already registered', 409);
+      throw error;
+    }
+  }
+
+  static async updateProfile(userId: string, input: SelfProfileInput): Promise<UserProfileResponse> {
+    try { await AuthDao.updateProfile(userId, input); }
+    catch (error) {
+      if ((error as { code?: string }).code === '23505') throw new AppError('Email or username is already registered', 409);
+      throw error;
+    }
+    return this.getProfile(userId);
+  }
 
   /**
    * Helper to hash refresh tokens deterministically using SHA-256 for database indexing.
@@ -56,9 +80,10 @@ export class AuthService {
   /**
    * Generates JWT Access Token (15m) with sub, rol, and permissions array.
    */
-  private static generateAccessToken(user: UserWithRole, permisos: string[]): string {
+  private static generateAccessToken(user: UserWithRole, permisos: string[], sessionId: string): string {
     const payload = {
       sub: user.id,
+      sid: sessionId,
       rol: user.rol_nombre,
       permisos,
     };
@@ -67,7 +92,7 @@ export class AuthService {
       expiresIn: this.ACCESS_TOKEN_EXPIRES_IN as unknown as number,
     };
 
-    return jwt.sign(payload, this.ACCESS_TOKEN_SECRET, options);
+    return jwt.sign(payload, signingSecret('access'), options);
   }
 
   /**
@@ -83,7 +108,7 @@ export class AuthService {
       expiresIn: this.REFRESH_TOKEN_EXPIRES_IN as unknown as number,
     };
 
-    return jwt.sign(payload, this.REFRESH_TOKEN_SECRET, options);
+    return jwt.sign(payload, signingSecret('refresh'), options);
   }
 
   /**
@@ -94,6 +119,8 @@ export class AuthService {
     passwordPlain: string,
     context: SessionContext = {}
   ): Promise<LoginResponse> {
+    signingSecret('access');
+    signingSecret('refresh');
     const user = await AuthDao.findUserByEmailOrUsername(identifier);
 
     if (!user) {
@@ -111,20 +138,21 @@ export class AuthService {
 
     const permisos = await AuthDao.getPermissionsByRoleId(user.rol_id);
 
-    const accessToken = this.generateAccessToken(user, permisos);
     const refreshToken = this.generateRefreshToken(user.id);
     const refreshTokenHash = this.hashToken(refreshToken);
 
     const expiracionToken = new Date();
     expiracionToken.setDate(expiracionToken.getDate() + this.REFRESH_TOKEN_DAYS);
 
-    await AuthDao.createSession({
+    const createdSession = await AuthDao.createSession({
       usuario_id: user.id,
       direccion_ip: context.ipAddress || null,
       user_agent: context.userAgent || null,
       refresh_token_hash: refreshTokenHash,
       expiracion_token: expiracionToken,
     });
+
+    const accessToken = this.generateAccessToken(user, permisos, createdSession.id);
 
     const userProfile: UserProfileResponse = {
       id: user.id,
@@ -159,10 +187,12 @@ export class AuthService {
     rawRefreshToken: string,
     context: SessionContext = {}
   ): Promise<AuthTokens> {
+    signingSecret('access');
+    const refreshSecret = signingSecret('refresh');
     let decoded: JwtPayload;
 
     try {
-      decoded = jwt.verify(rawRefreshToken, this.REFRESH_TOKEN_SECRET) as JwtPayload;
+      decoded = jwt.verify(rawRefreshToken, refreshSecret, { algorithms: ['HS256'] }) as JwtPayload;
     } catch {
       throw new AppError('Invalid or expired refresh token', 401);
     }
@@ -174,7 +204,7 @@ export class AuthService {
     const tokenHash = this.hashToken(rawRefreshToken);
     const session = await AuthDao.findActiveSessionByTokenHash(tokenHash);
 
-    if (!session) {
+    if (!session || session.usuario_id !== decoded.sub) {
       throw new AppError('Session is invalid, expired, or has been revoked', 401);
     }
 
@@ -185,18 +215,19 @@ export class AuthService {
 
     const permisos = await AuthDao.getPermissionsByRoleId(user.rol_id);
 
-    // Revoke old session for Refresh Token Rotation security
-    await AuthDao.revokeSession(session.id);
+    // Claim the refresh session atomically before issuing a replacement.
+    if (!await AuthDao.consumeSession(session.id)) {
+      throw new AppError('Session has already been refreshed or revoked', 401);
+    }
 
     // Issue brand-new access and refresh token pair
-    const newAccessToken = this.generateAccessToken(user, permisos);
     const newRefreshToken = this.generateRefreshToken(user.id);
     const newRefreshTokenHash = this.hashToken(newRefreshToken);
 
     const newExpiration = new Date();
     newExpiration.setDate(newExpiration.getDate() + this.REFRESH_TOKEN_DAYS);
 
-    await AuthDao.createSession({
+    const createdSession = await AuthDao.createSession({
       usuario_id: user.id,
       direccion_ip: context.ipAddress || session.direccion_ip,
       user_agent: context.userAgent || session.user_agent,
@@ -204,6 +235,7 @@ export class AuthService {
       expiracion_token: newExpiration,
     });
 
+    const newAccessToken = this.generateAccessToken(user, permisos, createdSession.id);
     return {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,

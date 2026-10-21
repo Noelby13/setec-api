@@ -1,0 +1,9 @@
+# Account lifecycle and administrative users
+
+Public `POST /api/auth/register` accepts only email, password, nombres, apellidos and optional username/telefono. The API resolves the existing ESTUDIANTE role; callers cannot choose privileges. Success is 201 with a safe profile and no tokens; login uses the existing endpoint and response envelope. Duplicate identities return 409. Passwords are bcrypt-hashed and limited to 72 UTF-8 bytes to prevent silent truncation.
+
+`PATCH /api/auth/profile` updates only current-account contact/name fields. Administrative `/api/users` listing/creation, `/api/users/roles` and `PATCH /api/users/:id` require current USUARIO_GESTIONAR or SUPER_ADMIN authority. Role assignment is limited to the actor's permission subset; self role/status changes and administrative mutations of SUPER_ADMIN accounts are refused. No delete endpoint is introduced.
+
+Access tokens now include a session `sid`. Protected requests check the active session, current account, role and permissions. Existing tokens without this binding require a fresh login. Logout revokes access immediately; refresh rotation atomically consumes one session, preventing simultaneous reuse. JWT_SECRET and JWT_REFRESH_SECRET must be explicitly configured, nonempty and distinct. No configuration or secret values are returned to callers.
+
+Verification used real Express HTTP over in-memory streams and an isolated PostgreSQL container, never the project's configured database. The identity/unit suite observed 23 checks; the independent verifier confirmed privilege-injection rejection, safe administrative role assignment, live permission/account changes and an unchanged login envelope. Session, authorization and concurrency changes are high risk. Native gentle-ai assessment is unavailable; independent verification was performed instead and is not represented as a native review receipt.

@@ -1,14 +1,16 @@
 {
   "name": "posgrado-setec-api",
   "version": "1.0.0",
-  "description": "API REST SNEPA-SETEC para gestión de posgrados y educación permanente",
+  "description": "API REST SNEPA-SETEC para gesti\u00f3n de posgrados y educaci\u00f3n permanente",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "seed": "tsx src/db/seed.ts",
     "gen:excel": "tsx src/scripts/generate-snepa-template.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test": "npm run test:auth",
+    "test:auth": "node --import tsx --test src/modules/auth/*.test.ts src/modules/users/*.test.ts"
   },
   "keywords": [
     "express",

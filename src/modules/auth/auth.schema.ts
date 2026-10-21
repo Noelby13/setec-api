@@ -20,15 +20,17 @@ export const refreshTokenSchema = z.object({
 
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 
-export const registerUserSchema = z.object({
-  email: z.string().email('Invalid email address').trim().toLowerCase(),
-  username: z.string().min(3, 'Username must be at least 3 characters').max(60).trim().optional(),
-  password: z.string().min(8, 'Password must be at least 8 characters long'),
-  nombres: z.string().min(1, 'First name is required').max(100).trim(),
-  apellidos: z.string().min(1, 'Last name is required').max(100).trim(),
-  telefono: z.string().max(30).trim().optional(),
-  avatarUrl: z.string().url('Invalid avatar URL').optional(),
-  rolId: z.string().uuid('Valid role UUID is required'),
-});
-
+export const accountFields = {
+  email: z.string().trim().toLowerCase().email('Invalid email address').max(150),
+  username: z.string().trim().min(3).max(60).regex(/^[a-zA-Z0-9_.-]+$/).optional(),
+  nombres: z.string().trim().min(1).max(100),
+  apellidos: z.string().trim().min(1).max(100),
+  telefono: z.string().trim().max(30).optional(),
+};
+// bcrypt processes at most 72 bytes. Reject longer input instead of silently truncating it.
+export const accountPassword = z.string().min(8).refine(value => Buffer.byteLength(value, 'utf8') <= 72, 'Password must not exceed 72 bytes');
+export const registerUserSchema = z.object({ ...accountFields, password: accountPassword }).strict();
+export const selfProfileSchema = z.object(accountFields).partial().strict()
+  .refine(value => Object.keys(value).length > 0, 'At least one profile field is required');
 export type RegisterUserInput = z.infer<typeof registerUserSchema>;
+export type SelfProfileInput = z.infer<typeof selfProfileSchema>;

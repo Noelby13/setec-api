@@ -68,6 +68,32 @@ export interface CreateSessionData {
 }
 
 export class AuthDao {
+  static async findRoleByName(nombre: string, db: DbClient = pool): Promise<{ id: string; nombre: string } | null> {
+    const result = await db.query<{ id: string; nombre: string }>('SELECT id, nombre FROM roles WHERE nombre = $1', [nombre]);
+    return result.rows[0] || null;
+  }
+
+  static async updateProfile(id: string, changes: { email?: string; username?: string; nombres?: string; apellidos?: string; telefono?: string }, db: DbClient = pool): Promise<void> {
+    const allowed = ['email', 'username', 'nombres', 'apellidos', 'telefono'] as const;
+    const entries = allowed.filter(key => changes[key] !== undefined);
+    if (!entries.length) return;
+    await db.query(`UPDATE usuarios SET ${entries.map((key, index) => `${key} = $${index + 2}`).join(', ')}, updated_at = NOW()
+      ${changes.email !== undefined ? ', email_verificado = FALSE' : ''} WHERE id = $1`, [id, ...entries.map(key => changes[key])]);
+  }
+
+  /** Atomically claim a refresh session; concurrent rotations cannot both succeed. */
+  static async consumeSession(id: string, db: DbClient = pool): Promise<boolean> {
+    const result = await db.query(`UPDATE sesiones SET is_token_revocado = TRUE, ultima_actividad = NOW()
+      WHERE id = $1 AND is_token_revocado = FALSE AND expiracion_token > NOW() RETURNING id`, [id]);
+    return result.rows.length === 1;
+  }
+
+  static async findActiveSessionById(id: string, userId: string, db: DbClient = pool): Promise<SessionRecord | null> {
+    const result = await db.query<SessionRecord>(`SELECT * FROM sesiones WHERE id = $1 AND usuario_id = $2
+      AND is_token_revocado = FALSE AND expiracion_token > NOW()`, [id, userId]);
+    return result.rows[0] || null;
+  }
+
   /**
    * Find a user by email or username, joining with roles.
    */

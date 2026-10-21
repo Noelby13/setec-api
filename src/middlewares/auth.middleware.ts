@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt, { JwtPayload } from 'jsonwebtoken';
+import { AuthDao } from '../modules/auth/auth.dao';
+import { signingSecret } from '../modules/auth/auth.config';
 import { AppError } from './error.middleware';
 
 export interface AuthUserPayload {
@@ -16,13 +18,10 @@ declare global {
   }
 }
 
-const ACCESS_TOKEN_SECRET =
-  process.env.JWT_SECRET || 'super_secret_jwt_access_token_key_snepa_setec_2026';
-
 /**
  * Middleware that verifies the Bearer JWT access token and attaches req.user.
  */
-export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
+export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -32,25 +31,24 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, ACCESS_TOKEN_SECRET) as JwtPayload;
-
-    if (!decoded || !decoded.sub || !decoded.rol) {
-      return next(new AppError('Invalid token payload', 401));
+    const secret = signingSecret('access');
+    let decoded: JwtPayload;
+    try { decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as JwtPayload; }
+    catch (error) {
+      throw new AppError(error instanceof jwt.TokenExpiredError ? 'Token has expired' : 'Invalid authentication token', 401);
     }
-
-    req.user = {
-      id: decoded.sub as string,
-      rol: decoded.rol as string,
-      permisos: Array.isArray(decoded.permisos) ? (decoded.permisos as string[]) : [],
-    };
-
+    // Session binding is required. Access tokens issued before this release require a new login.
+    if (typeof decoded?.sub !== 'string' || typeof decoded.sid !== 'string') {
+      throw new AppError('Invalid token payload; please sign in again', 401);
+    }
+    const user = await AuthDao.findUserById(decoded.sub);
+    if (!user?.activo) throw new AppError('Associated user account is not active', 401);
+    if (!await AuthDao.findActiveSessionById(decoded.sid, user.id)) {
+      throw new AppError('Session is invalid, expired, or has been revoked', 401);
+    }
+    req.user = { id: user.id, rol: user.rol_nombre, permisos: await AuthDao.getPermissionsByRoleId(user.rol_id) };
     next();
-  } catch (error) {
-    if (error instanceof jwt.TokenExpiredError) {
-      return next(new AppError('Token has expired', 401));
-    }
-    return next(new AppError('Invalid authentication token', 401));
-  }
+  } catch (error) { next(error); }
 }
 
 /**

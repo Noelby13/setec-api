@@ -1,5 +1,5 @@
 {
-  "scope": "Local isolated functional verification; no deployment or native review receipt.",
+  "scope": "Local isolated functional verification; no deployment or production-data changes.",
   "deterministic": {
     "api": 101,
     "backoffice": 153,
@@ -120,8 +120,7 @@
     "Recovery email delivery service"
   ],
   "unavailableProof": [
-    "Engram recovery mirror",
-    "Native gentle-ai review assessment/receipt"
+    "Engram recovery mirror (nonblocking; complete local recovery document retained)"
   ],
   "screenshots": [
     "screenshots/public-catalog-mobile.png",
@@ -131,5 +130,11 @@
     "screenshots/student-finished-history.png",
     "screenshots/student-recorded-results.png"
   ],
-  "validationFollowUp": "Malformed documentary values rejected 400 without target-row changes; valid boolean/multipart/default compatibility independently verified in PostgreSQL after the connected replay."
+  "validationFollowUp": "Malformed documentary values rejected 400 without target-row changes; valid boolean/multipart/default compatibility independently verified in PostgreSQL after the connected replay.",
+  "closure": {
+    "status": "complete",
+    "date": "2026-10-21",
+    "userInstruction": "termina, olvida lo que tenga que ver con gentle-ai",
+    "evidenceChanged": false
+  }
 }

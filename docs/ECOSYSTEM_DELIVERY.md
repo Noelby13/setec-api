@@ -133,7 +133,7 @@ The integration runner requires Docker at its documented local socket and an alr
 | Backoffice     | `a8c1162` users/dashboards; `bc34f66` certificates; `b8b1fc6` eligible admission/Caja actions; `a3beca6` latest contract synchronization                                                               |
 | Student portal | `f8295b7` runnable public/student application; `fe5612f` transition contract; `4759e51` strict-input contract                                                                                          |
 
-Acceptance-tooling/evidence commit: API `05afb6b`. Documentation entry points: backoffice `c62557a` and portal `86ba13b`. The final tracking-closure commit follows these source commits; inspect `git log --oneline` in each repository for the complete local history. Branch: `feat/uncsm-student-ecosystem`. No push, pull request or deployment was performed. Resume details and per-spec evidence are in `odd/tasks/uncsm-ecosystem.md`. Engram mirror and native gentle-ai assessment/review remain unavailable; functional evidence is not represented as a native receipt.
+Acceptance-tooling/evidence commit: API `05afb6b`. Documentation entry points: backoffice `c62557a` and portal `86ba13b`. The final tracking-closure commit follows these source commits; inspect `git log --oneline` in each repository for the complete local history. Branch: `feat/uncsm-student-ecosystem`. No push, pull request or deployment was performed. Resume details and per-spec evidence are in `odd/tasks/uncsm-ecosystem.md`. The local task document is the durable recovery record.
 
 ## Known baseline API limitations
 
@@ -148,8 +148,8 @@ The preserved historical contract identifies older behavior outside the new work
 - [Finished history](verification/screenshots/student-finished-history.png)
 - [Recorded academic results](verification/screenshots/student-recorded-results.png)
 
-## Needs your decision: native review
+## Delivery closure
 
-The requested local implementation and functional acceptance are complete. Native high-risk review remains **unavailable**: the current environment cannot resolve the `gentle-ai` command, so the user-owned mode/assessment/preflight cannot be read or executed. Independent functional verification is not a native transaction, consent, receipt or approval. No review mode was changed.
+Local delivery was closed on 2026-10-21 following the user's explicit instruction to finish and disregard the Gentle AI workflow. All functional verification and retained evidence remain as reported above. The institutional inputs documented in this guide remain configuration or policy prerequisites for their respective operations.
 
-AGENTS.md requires an explicit disposition of unavailable proof. The remaining choice is to leave these local source candidates explicitly without native review, or keep that review pending until the CLI is available. This does not authorize deployment, push or a real-database migration. The feature remains open only for this decision; its code, tests, commands and evidence are preserved.
+Local commits are preserved in all three repositories. No push, deployment, real charge or configured-database migration was performed.

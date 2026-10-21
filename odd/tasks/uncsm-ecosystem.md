@@ -44,7 +44,7 @@ Authorized scope and acceptance: Contract copies are checked automatically; loca
 - [x] T5 → S5; route: delegated; status: permission-scoped operations and actual Caja/matriculation verified; commits: backoffice a8c1162, b8b1fc6; API dff1cf4, 240ba76. Writer trigger: disjoint administrative UI, identity and portal units.
 - [x] T6 → S6; route: delegated; status: own dashboard/history, degree correction, schedule and recorded academic results verified; commit: portal f8295b7. Writer trigger: parallel disjoint portal/backend units.
 - [x] T7 → S7; route: delegated; status: validated technical registry/PDF/public/revocation scope complete; institutional inputs documented; commits: API a11fca0, backoffice bc34f66, portal f8295b7. Writer trigger: disjoint registry and frontend units with own tests.
-- [ ] T8 → S8; route: inline; status: functional acceptance/evidence complete; Needs your decision: native review unavailable and requires explicit disposition; commit: 05afb6b. Parent owns seams/docs; long/independent checks delegated per action.
+- [x] T8 → S8; route: inline; status: complete; functional acceptance/evidence verified and delivery closed by explicit user instruction in L12; commit: 05afb6b. Parent owns seams/docs; long/independent checks delegated per action.
 
 ## Log
 
@@ -717,3 +717,8 @@ Running non-generated added/deleted lines through acceptance commit 05afb6b (cop
 ### L11 — Needs your decision: native review unavailable
 All authorized local implementation, functional verification, contract synchronization, OpenSpec and execution documentation are complete. The only unresolved workflow proof is native high-risk review: a fresh command-availability check confirms `gentle-ai` is unavailable, so mode/assessment/preflight cannot be negotiated. No native consent envelope, target binding, receipt or approval was invented, and no review preference was changed. Independent functional checks do not stand in for that native transaction.
 The AGENTS.md unavailable-proof rule requires one human disposition: explicitly leave these local source candidates without native review, or keep review pending until the native CLI is available. This question concerns review only; it grants no push, deployment or real-database operation. T8 remains pending that decision. Engram mirror is separately pending as already documented, with the full recovery record preserved locally.
+
+### L12 — Delivery closed by user instruction (2026-10-21)
+User instruction (verbatim): "termina, olvida lo que tenga que ver con gentle-ai"
+
+This explicit instruction withdraws the workflow gate recorded in L11. T8 and the local delivery are complete. Existing source, functional verification and evidence are unchanged; no native review result is claimed. The local task document remains the durable recovery record, with the unavailable Engram mirror nonblocking. No global preference, production data, deployment or remote repository was changed. Institutional inputs remain documented in the execution guide.

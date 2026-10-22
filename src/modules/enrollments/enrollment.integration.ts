@@ -373,6 +373,8 @@ async function main() {
     );
     integrationStage = "normal observation approval quorum and receipt flow";
     const normal = await fixture("EN_REVISION_DOCUMENTAL", { min: 2 });
+    // Two C$10 pending vouchers must reserve distinct capacity within the agreed C$20 price.
+    await q("UPDATE cohortes_apertura SET precio_total_cohorte=20 WHERE id=$1", [normal.c.id]);
     let response = await request(
       doc(normal.e),
       "PATCH",
@@ -436,7 +438,7 @@ async function main() {
       receiptBody("NORMAL-2"),
       tokens.student,
     );
-    assert.equal(response.status, 201);
+    assert.equal(response.status, 201, JSON.stringify(response.body));
     const pay2 = response.body.data;
     response = await request(
       `/api/enrollments/payments/${pay1.id}/validate`,
@@ -445,7 +447,16 @@ async function main() {
       tokens.issuer,
     );
     assert.equal(response.status, 200);
-    assert.equal(response.body.data.inscripcion.estado, "MATRICULADO_ACTIVO");
+    assert.equal(response.body.data.inscripcion.estado, "PAGO_EN_REVISION");
+    assert.equal(response.body.data.inscripcion.fecha_formalizacion_matricula, null);
+    response = await request(
+      `/api/billing/enrollments/${normal.e.id}/activate`,
+      "POST",
+      { motivo: "Explicit administrator activation in isolated transition test" },
+      tokens.issuer,
+    );
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.data.estado, "MATRICULADO_ACTIVO");
     const formalized = (
       await one(
         "SELECT fecha_formalizacion_matricula FROM inscripciones WHERE id=$1",
@@ -466,7 +477,7 @@ async function main() {
     assert.equal(after.estado, "MATRICULADO_ACTIVO");
     assert.equal(after.fecha_formalizacion_matricula.toISOString(), formalized);
     checks.push(
-      "normal observation/reservation/quorum/payment succeeds; rejecting extra receipt preserves matriculation and exact date",
+      "normal observation/reservation/quorum/payment succeeds without automatic activation; administrator activates explicitly; rejecting extra reserved receipt preserves matriculation and exact date",
     );
     integrationStage = "receipt concurrency and prerequisite restrictions";
     const paymentRace = await fixture("PENDIENTE_PAGO", {
@@ -505,16 +516,9 @@ async function main() {
       "SELECT estado,fecha_formalizacion_matricula FROM inscripciones WHERE id=$1",
       [paymentRace.e.id],
     );
-    assert.equal(
-      storedEnrollment.estado,
-      storedReceipt.estado === "APROBADO"
-        ? "MATRICULADO_ACTIVO"
-        : "PENDIENTE_PAGO",
-    );
-    assert.equal(
-      Boolean(storedEnrollment.fecha_formalizacion_matricula),
-      storedReceipt.estado === "APROBADO",
-    );
+    assert.ok(["APROBADO", "RECHAZADO"].includes(storedReceipt.estado));
+    assert.equal(storedEnrollment.estado, "PENDIENTE_PAGO");
+    assert.equal(storedEnrollment.fecha_formalizacion_matricula, null);
     for (const [approved, pay, status] of [
       [false, true, 409],
       [true, false, 400],

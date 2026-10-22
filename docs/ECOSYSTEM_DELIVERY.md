@@ -153,3 +153,10 @@ The preserved historical contract identifies older behavior outside the new work
 Local delivery was closed on 2026-10-21 following the user's explicit instruction to finish and disregard the Gentle AI workflow. All functional verification and retained evidence remain as reported above. The institutional inputs documented in this guide remain configuration or policy prerequisites for their respective operations.
 
 Local commits are preserved in all three repositories. No push, deployment, real charge or configured-database migration was performed.
+
+
+## Academic billing and administrative UX update (2026-10-21)
+
+The [academic billing guide](academic-billing.md) describes versioned plans, exact immutable obligations, partial collection, protected internal receipts, and the two new additive billing migrations. Enrollment activation now requires an explicit administrator decision, including free cohorts; payment approval does not activate it. This intentional rule supersedes older payment-activation descriptions. No configured database was migrated.
+
+Current feature proof is retained in [academic billing evidence](verification/academic-billing-evidence.json) and `odd/tasks/academic-billing-ux.md`: API 115, backoffice 178 and portal 59 deterministic tests; all builds and canonical contracts; 34 desktop/mobile fixture cases; 7 billing and 4 enrollment PostgreSQL groups; 9 actual connected browser steps. The connected run uses real HTTP and isolated PostgreSQL; its finished-history status is an explicit synthetic academic fixture, not an automatic graduation decision. Four independent UI findings were corrected in one batch and rechecked 12/12; parent repeated the protected receipt browser probe. Native gentle-ai review and Engram mirroring remain unavailable and are not represented as approvals.

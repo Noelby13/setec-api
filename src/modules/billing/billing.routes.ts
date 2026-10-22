@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { receiptPdf } from "./billing.receipt";
+import { discoverBillingStudents } from "./billing.students";
 import { pool, withTransaction } from "../../db/pool";
 import { PaymentService } from "./billing.payments";
 import { Router, Request, Response, NextFunction } from "express";
@@ -27,6 +28,7 @@ import {
 
 export const billingRouter = Router();
 billingRouter.use(requireAuth);
+billingRouter.get("/students", discoverBillingStudents);
 function handle(operation: (req: Request) => Promise<unknown>) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {

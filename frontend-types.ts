@@ -1460,6 +1460,9 @@ export type ApiEndpointResponse<K extends ApiEndpointKey> = ApiEndpointMap[K]['r
 
 
 /** Academic billing: monetary responses and new requests use exact decimal strings. */
+export interface BillingStudent { id: UUID; nombres: string; apellidos: string; tipo_identificacion: TipoIdentificacion; identificacion_terminacion: string }
+export interface BillingStudentsQuery { search?: string; page?: number; limit?: number }
+export interface BillingStudentsResponse { success: true; data: BillingStudent[]; pagination: { total: number; page: number; limit: number; totalPages: number } }
 export type BillingMode = 'GRATUITO' | 'PAGO_UNICO' | 'CUOTAS' | 'MODULOS';
 export interface BillingInstallment { concepto: string; importe: string; fecha_vencimiento?: DateOnly | null; componente_id?: UUID | null }
 export interface BillingPlanRequest { nombre: string; modalidad: BillingMode; predeterminado?: boolean; monto_matricula: string; precio_academico: string; cuotas: BillingInstallment[] }
@@ -1472,6 +1475,7 @@ export interface BillingAgreement { id: UUID; inscripcion_id: UUID; plan_id: UUI
 export interface BillingAccount { inscripcion: Pick<EnrollmentDetail, 'id' | 'codigo_expediente' | 'estado' | 'cohorte_id' | 'programa_id' | 'programa_nombre' | 'cohorte_codigo' | 'aspirante_nombres' | 'aspirante_apellidos' | 'cobro_habilitado'>; acuerdo: BillingAgreement | null; obligaciones: BillingObligation[]; pagos: PagoInscripcionRow[]; requiere_conciliacion: boolean; comprobantes: BillingReceipt[]; resumen: { monto_matricula: string | null; costo_academico: string | null; total_comprometido: string | null; total_pagado: string; saldo_pendiente: string | null; matricula_pendiente: string | null; en_revision: string; importe_anulado: string; vencido: string | null; obligaciones_vencidas: number; proximo_vencimiento: DateOnly | null } }
 export interface BillingCollectResult { pago: PagoInscripcionRow; comprobante: BillingReceipt | null; reintento: boolean }
 export interface ApiEndpointMap<F = UploadDescriptor> {
+  'GET /api/billing/students': ApiEndpoint<NoInput, BillingStudentsQuery, NoInput, BillingStudentsResponse, 200, true, 'PAGO_VALIDAR' | 'INSCRIPCION_VALIDAR'>;
   'GET /api/billing/cohorts/:id/plans': ApiEndpoint<IdParam, NoInput, NoInput, ApiSuccess<BillingPlan[]>, 200, true, 'COHORTE_GESTIONAR' | 'INSCRIPCION_VALIDAR' | 'PAGO_VALIDAR'>;
   'POST /api/billing/cohorts/:id/plans': ApiEndpoint<IdParam, NoInput, BillingPlanRequest, ApiSuccess<BillingPlan>, 200, true, 'COHORTE_GESTIONAR', 'json'>;
   'GET /api/billing/enrollments/:id/account': ApiEndpoint<IdParam, NoInput, NoInput, ApiSuccess<BillingAccount>, 200, true>;

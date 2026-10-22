@@ -10,14 +10,30 @@ Program and directly related cohort forms SHALL expose consistent save/cancel ac
 ### Requirement: Accepted obligations and exact balances
 Cohort plans SHALL separate enrollment fees from academic cost, match installment sums to the agreed academic price, support real academic-module links and optional due dates, and create immutable per-enrollment obligations once at existing documentary/quorum eligibility. Balances SHALL derive from exact decimal amounts and accepted payment allocations. General price changes SHALL NOT rewrite accepted debt.
 
+#### Scenario: Enrollment fee plus three installments
+- **WHEN** an eligible student accepts a C$2,000 enrollment fee and three academic installments of C$10,000
+- **THEN** the account commits C$32,000 once, separates the fee, and retains that agreement after later price changes
+
 ### Requirement: Safe collection and internal documents
 Authorized collection SHALL identify the student, cohort and obligations; prevent wrong-owner allocations, overpayment and retry duplicates transactionally; retain an audit history and uniquely numbered linked internal receipts. Fiscal compliance SHALL remain pending verified institutional requirements.
+
+#### Scenario: Partial collection and retry
+- **WHEN** Caja records C$4,000 against a C$10,000 installment and retries the same operation
+- **THEN** the installment balance is C$6,000, only one payment and internal receipt exist, and the operation remains auditable
 
 ### Requirement: Consistent accounts and operational navigation
 Authorized administrative/cashier dashboards and student account views SHALL use the same authoritative obligations, payments, balances, due dates and protected internal receipts. No unauthorized electronic payment integration SHALL be enabled.
 
+#### Scenario: Shared account after collection
+- **WHEN** Caja and the owning student consult the same enrollment after an approved collection
+- **THEN** both receive the same obligations and balance, and can consult its authorized internal receipt without an electronic payment action
+
 ### Requirement: Verified delivery
 Implementation SHALL preserve existing valid behavior and demonstrate form journeys, exact-money invariants, authorization, retry/concurrency behavior and connected accounts using isolated data. The complete original request and its numerical examples remain acceptance criteria.
+
+#### Scenario: Connected verification
+- **WHEN** the implementation is checked against disposable PostgreSQL and local browser sessions
+- **THEN** observed results cover the configured plan, partial collection, account consistency and explicit administrator activation without changing a configured database
 
 ### Requirement: Explicit administrator activation
 Matriculation SHALL activate only through an authorized administrator decision, including free cohorts. Payment recording or approval SHALL NOT itself activate academic matriculation. Existing documentary and quorum conditions SHALL remain prerequisites for collection.

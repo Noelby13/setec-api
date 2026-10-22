@@ -1,0 +1,127 @@
+{
+  "feature": "academic-billing-ux",
+  "verified_on": "2026-10-21",
+  "scope": "Local isolated verification; no configured database, deployment or remote mutation",
+  "deterministic": {
+    "api": {
+      "passed": 115,
+      "failed": 0
+    },
+    "backoffice": {
+      "passed": 178,
+      "failed": 0
+    },
+    "portal": {
+      "passed": 59,
+      "failed": 0
+    }
+  },
+  "builds": {
+    "api": "passed",
+    "backoffice": "passed",
+    "portal": "passed"
+  },
+  "contracts": "all three copies match",
+  "openspec": "strict validation passed after adding four missing scenarios",
+  "postgres": {
+    "billing_groups_passed": 7,
+    "enrollment_groups_passed": 4,
+    "database": "unique disposable PostgreSQL16 container; no project .env",
+    "coverage": [
+      "exact prices and immutable agreements",
+      "once-only obligations and historical reconciliation",
+      "partial payments, reservation release, concurrent collection and idempotency",
+      "authorization, owner isolation, student discovery projection and pagination",
+      "manual administrator activation including free cohorts",
+      "internal PDF receipts, cancellation and audit"
+    ]
+  },
+  "browser_fixtures": {
+    "passed": 34,
+    "desktop": 17,
+    "mobile": 17,
+    "http": "explicit synthetic fixtures"
+  },
+  "independent_verification": {
+    "result": "all four reported blockers resolved",
+    "finding_limited_recheck_passed": 12,
+    "parent_receipt_spot_check": "passed with real client bearer request",
+    "correction_batches": 1,
+    "findings": [
+      "protected receipt path prefix",
+      "modal busy state after editor removal",
+      "single explicit discard before URL navigation",
+      "contextual cohort student navigation and filters"
+    ]
+  },
+  "connected": {
+    "mockHttp": false,
+    "steps": [
+      {
+        "name": "API fixture prepares an existing own application for the targeted admission/payment recheck",
+        "passed": true
+      },
+      {
+        "name": "UI admin login, operational dashboard and real user directory",
+        "passed": true
+      },
+      {
+        "name": "UI administrator configures a separate enrollment fee and exact installment plan before acceptance",
+        "passed": true
+      },
+      {
+        "name": "UI administrative documentary validation reaches actual quorum and pending payment",
+        "passed": true
+      },
+      {
+        "name": "UI cashier-only dashboard and restricted navigation",
+        "passed": true
+      },
+      {
+        "name": "UI student-first Caja discovers cohorts and collects partial obligations without activating enrollment",
+        "passed": true
+      },
+      {
+        "name": "UI student account shows the same agreed plan, paid concepts and balance as Caja",
+        "passed": true
+      },
+      {
+        "name": "UI administrator explicitly activates enrollment after collection; student sees the active course",
+        "passed": true
+      },
+      {
+        "name": "UI finished history and actual grade reflect an explicit isolated EGRESADO fixture",
+        "passed": true
+      }
+    ],
+    "fixtures": [
+      "New uncsm_test PostgreSQL database, roles/admin/cashier, published EP program and open cohort, 14 prevalidated reservation fixtures to satisfy the existing quorum of 15, one real modeled component/schedule.",
+      "Targeted recheck starts with registration/profile/application created through real HTTP API; their UI traversal was already observed in the previous retained run.",
+      "Only the finished-history check uses SQL academic prerequisite EGRESADO and an approved component grade; this is not an automatic academic decision."
+    ],
+    "pageErrors": [],
+    "httpErrors": [],
+    "cleanup": {
+      "browser": true,
+      "servers": true,
+      "pool": true,
+      "container": true
+    },
+    "sourceHashes": {
+      "POSGRADOSETECAPI/src/modules/enrollments/enrollment.service.ts": "981c68504ffc7f3d1af1d09c43bc20454d2348cf607b24cee65355af0d28c3b0",
+      "setecweb/src/features/admissions/CashierPage.jsx": "eef221aef32b2eda6dbb5720c3a477e9e10a57305e9f2c7a1ec2ead2f1e333bc",
+      "setecweb/src/features/billing/AccountPanel.jsx": "0d1a6015a5ac7f548de98271521c2152921eddfd1d8536a141d4ce0226a0a7d1",
+      "setecweb/src/features/billing/PaymentPlansDialog.jsx": "1d0b3a7c4ccc8359d8815517330a66a0f4d7b1a0df4d11ea5f4641b373715661",
+      "setecportal/src/pages/Student.jsx": "c1dc1dc0f2a3213ad569558573237233041bd0892d2656847e1b95911a647c10",
+      "setecportal/src/pages/StudentAccount.jsx": "530956f4a7dec54ef2156d072a0c1f9b26b45aa2626b398b6785a9449dfc231f"
+    },
+    "recordedGrade": "90.00",
+    "complete": true
+  },
+  "limitations": [
+    "gentle-ai executable unavailable; no native risk assessment or review approval claimed",
+    "Engram tools unavailable; recovery mirror pending",
+    "No configured database migration or institutional fiscal approval performed",
+    "No physical printer hardware test; browser PDF view/print actions and protected downloads provided"
+  ]
+}

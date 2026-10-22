@@ -1,5 +1,5 @@
 /** Explicit local integration runner: creates and removes only its own PostgreSQL container and temp files.
- * Run: node --import tsx src/modules/enrollments/billing.integration.ts
+ * Run: node --import tsx src/modules/billing/billing.integration.ts
  * Exercises the current financial behavior through public HTTP with isolated fixtures.
  * Requires an already available postgres:16-alpine image; never pulls images or reads project .env.
  */
@@ -342,6 +342,39 @@ async function main() {
     const c = await cohort("30000.00", "2000.00", 2),
       e = await enrollment(c),
       other = await enrollment(c, "other");
+    integrationStage = "real student-first discovery and privacy";
+    await enrollment(await cohort(), "student");
+    await q(
+      "INSERT INTO personas_aspirantes(tipo_identificacion,numero_identificacion,nombres,apellidos,fecha_nacimiento,email,telefono) VALUES ('PASAPORTE','BILL-UNLINKED','Unlinked','Prueba','2000-01-01','unlinked@certificate.test','12345678')",
+    );
+    const beforeDiscovery = await snapshot();
+    assert.equal((await request("/api/billing/students")).status, 401);
+    await rejected("/api/billing/students", "GET", undefined, 403, tokens.student);
+    for (const query of ["page=0", "limit=51", "page=1.5", `search=${"x".repeat(121)}`]) {
+      await rejected(`/api/billing/students?${query}`, "GET", undefined, 400, tokens.revoker);
+    }
+    for (const search of [" student Prueba ", "BILL-student", e.codigo_expediente]) {
+      const found = await request(`/api/billing/students?search=${encodeURIComponent(search)}`, "GET", undefined, tokens.revoker);
+      assert.equal(found.status, 200, JSON.stringify(found.body));
+      assert.deepEqual(found.body.pagination, { total: 1, page: 1, limit: 10, totalPages: 1 });
+      assert.deepEqual(found.body.data, [{ id: applicants.student.id, nombres: "student", apellidos: "Prueba", tipo_identificacion: "PASAPORTE", identificacion_terminacion: "dent" }]);
+    }
+    const pages = [];
+    for (const page of [1, 2, 3]) {
+      const found = await request(`/api/billing/students?search=Prueba&page=${page}&limit=1`, "GET", undefined, tokens.issuer);
+      assert.equal(found.status, 200, JSON.stringify(found.body));
+      assert.deepEqual(found.body.pagination, { total: 2, page, limit: 1, totalPages: 2 });
+      pages.push(...found.body.data);
+    }
+    assert.deepEqual(pages.map(person => person.id), [applicants.other.id, applicants.student.id]);
+    assert.deepEqual(pages.map(person => person.identificacion_terminacion), ["ther", "dent"]);
+    const excluded = await request("/api/billing/students?search=Unlinked", "GET", undefined, tokens.revoker);
+    assert.equal(excluded.status, 200);
+    assert.deepEqual(excluded.body.data, []);
+    assert.equal(excluded.body.pagination.total, 0);
+    assert.equal(await snapshot(), beforeDiscovery, "student discovery changed persisted financial data");
+    checks.push("real student-first discovery enforces authentication and permissions, literal name/identifier/expediente search, last-four-only identity, pagination, enrollment-only results and no duplicates across cohorts");
+    integrationStage = "cohort price plan and quorum";
     const plan = {
       nombre: "Tres cuotas",
       modalidad: "CUOTAS",

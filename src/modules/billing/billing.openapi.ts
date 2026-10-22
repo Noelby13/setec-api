@@ -49,6 +49,45 @@ const reason = {
   properties: { motivo: { type: "string", minLength: 5, maxLength: 2000 } },
 };
 export const billingOpenApiPaths = {
+  "/billing/students": {
+    get: {
+      tags: ["Billing"],
+      summary: "Find enrolled students before choosing a cohort or account",
+      description: "JWT; PAGO_VALIDAR or INSCRIPCION_VALIDAR. Distinct enrolled people only; full identifiers and profile data are never returned.",
+      security: auth,
+      parameters: [
+        { in: "query", name: "search", schema: { type: "string", maxLength: 120 }, description: "Trimmed literal search by full name, identifier or enrollment dossier code." },
+        { in: "query", name: "page", schema: { type: "integer", minimum: 1, default: 1 } },
+        { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 50, default: 10 } },
+      ],
+      responses: {
+        200: {
+          description: "Minimal student results with consistent pagination",
+          content: { "application/json": { schema: {
+            type: "object", required: ["success", "data", "pagination"], additionalProperties: false,
+            properties: {
+              success: { type: "boolean", enum: [true] },
+              data: { type: "array", items: {
+                type: "object", additionalProperties: false,
+                required: ["id", "nombres", "apellidos", "tipo_identificacion", "identificacion_terminacion"],
+                properties: {
+                  id: { type: "string", format: "uuid" }, nombres: { type: "string" }, apellidos: { type: "string" },
+                  tipo_identificacion: { type: "string" }, identificacion_terminacion: { type: "string", maxLength: 4 },
+                },
+              } },
+              pagination: {
+                type: "object", required: ["total", "page", "limit", "totalPages"], additionalProperties: false,
+                properties: { total: { type: "integer", minimum: 0 }, page: { type: "integer", minimum: 1 }, limit: { type: "integer", minimum: 1, maximum: 50 }, totalPages: { type: "integer", minimum: 0 } },
+              },
+            },
+          } } },
+        },
+        400: { description: "Invalid search or pagination" },
+        401: { description: "Authentication required" },
+        403: { description: "Missing PAGO_VALIDAR or INSCRIPCION_VALIDAR permission" },
+      },
+    },
+  },
   "/billing/cohorts/{id}/plans": {
     get: operation(
       "List versioned cohort payment offers",

@@ -185,7 +185,10 @@ async function main() {
   for (const [name, file] of [
     ["POSGRADOSETECAPI", "src/modules/enrollments/enrollment.service.ts"],
     ["setecweb", "src/features/admissions/CashierPage.jsx"],
+    ["setecweb", "src/features/billing/AccountPanel.jsx"],
+    ["setecweb", "src/features/billing/PaymentPlansDialog.jsx"],
     ["setecportal", "src/pages/Student.jsx"],
+    ["setecportal", "src/pages/StudentAccount.jsx"],
   ])
     report.sourceHashes[`${name}/${file}`] = hash(
       await readFile(path.join(roots[name], file)),
@@ -519,8 +522,34 @@ async function main() {
     },
     admin,
   );
+  let planReady = false;
+  if (adminReady)
+    planReady = await step(
+      "UI administrator configures a separate enrollment fee and exact installment plan before acceptance",
+      async () => {
+        await admin.getByRole("navigation").getByRole("link", { name: "Cohortes y grupos", exact: true }).click();
+        await admin.getByRole("button", { name: "Planes de pagos", exact: true }).click();
+        const dialog = admin.getByRole("dialog", { name: "Planes de pagos de cohorte", exact: true });
+        await dialog.getByRole("button", { name: "Nuevo plan", exact: true }).click();
+        await dialog.getByLabel("Nombre del plan *", { exact: true }).fill("Plan conectado: matrícula y dos cuotas");
+        await dialog.getByLabel(/^Modalidad de cobro/).selectOption("CUOTAS");
+        await dialog.getByLabel("Costo académico *", { exact: true }).fill("100.00");
+        await dialog.getByLabel("Matrícula separada *", { exact: true }).fill("10.00");
+        await dialog.getByLabel("Cantidad de cuotas", { exact: true }).fill("2");
+        await dialog.getByRole("button", { name: "Distribuir costo académico", exact: true }).click();
+        assert.equal(await dialog.getByLabel("Importe 1 *", { exact: true }).inputValue(), "50.00");
+        assert.equal(await dialog.getByLabel("Importe 2 *", { exact: true }).inputValue(), "50.00");
+        const saved = admin.waitForResponse(response => response.url().endsWith(`/billing/cohorts/${cohort.id}/plans`) && response.request().method() === "POST");
+        await dialog.getByRole("button", { name: "Guardar plan", exact: true }).click();
+        assert.equal((await saved).status(), 200);
+        await dialog.getByText(/Plan guardado correctamente/).waitFor();
+        await screenshot(admin, "admin-cohort-payment-plan");
+        await dialog.getByRole("button", { name: "Cerrar diálogo", exact: true }).click();
+      },
+      admin,
+    );
   let approved = false;
-  if (adminReady && enrollment)
+  if (adminReady && planReady && enrollment)
     approved = await step(
       "UI administrative documentary validation reaches actual quorum and pending payment",
       async () => {
@@ -557,9 +586,12 @@ async function main() {
         );
         assert.equal(persisted.estado, "PENDIENTE_PAGO");
         await screenshot(admin, "admin-document-validation");
+        await admin.getByRole("dialog", { name: "Detalle de inscripción", exact: true })
+          .getByRole("button", { name: "Cerrar diálogo", exact: true }).click();
       },
       admin,
     );
+  let collected = false;
   let matriculated = false;
   const cashierReady = await step(
     "UI cashier-only dashboard and restricted navigation",
@@ -584,61 +616,93 @@ async function main() {
     cashier,
   );
   if (cashierReady && approved)
-    matriculated = await step(
-      "UI cashier records and approves fixture-only payment; student sees real active enrollment",
+    collected = await step(
+      "UI student-first Caja discovers cohorts and collects partial obligations without activating enrollment",
       async () => {
         await cashier
           .getByRole("navigation")
           .getByRole("link", { name: "Caja y pagos", exact: true })
           .click();
-        const row = cashier
-          .getByRole("row")
-          .filter({ hasText: enrollment.codigo_expediente });
-        await row.getByRole("button").first().click();
-        await cashier
-          .getByRole("button", { name: "Registrar pago", exact: true })
-          .click();
-        await cashier
-          .getByLabel(/^Método de pago/)
-          .selectOption("CAJA_ADMINISTRATIVA");
-        await cashier
-          .getByLabel(/^Número de referencia/)
-          .fill("E2E-NO-REAL-PAYMENT");
-        await cashier.getByLabel(/^Monto subtotal/).fill("100");
-        await cashier.getByLabel(/^Total pagado reportado/).fill("100");
-        await cashier
-          .getByLabel(/^Concepto/)
-          .fill("Movimiento aislado de prueba, no cobro real");
+        await cashier.getByLabel("Nombre, identificación o expediente", { exact: true }).fill("Estudiante Real");
+        const person = cashier.getByRole("row").filter({ hasText: "Estudiante Real Prueba" });
+        assert.equal((await person.getByRole("cell").nth(1).innerText()).includes("termina en WNER"), true);
+        assert.equal((await person.innerText()).includes("E2E-STUDENT-OWNER"), false);
+        await person.getByRole("button", { name: "Seleccionar estudiante", exact: true }).click();
+        await cashier.getByRole("row").filter({ hasText: enrollment.codigo_expediente })
+          .getByRole("button", { name: "Ver estado de cuenta", exact: true }).click();
+        await cashier.getByRole("heading", { name: "Estado de cuenta", exact: true }).waitFor();
+        assert.equal(await cashier.getByRole("button", { name: "Activar matrícula", exact: true }).count(), 0);
+        await cashier.getByRole("button", { name: "Cobrar conceptos", exact: true }).click();
+        const dialog = cashier.getByRole("dialog", { name: "Registrar cobro", exact: true });
+        await dialog.getByRole("checkbox", { name: "Seleccionar Matrícula", exact: true }).check();
+        await dialog.getByRole("checkbox", { name: "Seleccionar Cuota 1", exact: true }).check();
+        await dialog.getByLabel("Abono a Cuota 1", { exact: true }).fill("20.00");
         const payment = cashier.waitForResponse(
           (response) =>
-            response.url().endsWith("/payments") &&
+            response.url().endsWith(`/billing/enrollments/${enrollment.id}/payments`) &&
             response.request().method() === "POST",
         );
         await cashier
-          .getByRole("button", { name: "Enviar pago a revisión", exact: true })
+          .getByRole("button", { name: "Confirmar cobro", exact: true })
           .click();
-        assert.equal((await payment).status(), 201);
-        await cashier
-          .getByRole("button", { name: "Validar pago", exact: true })
-          .click();
-        await cashier.getByLabel(/^Decisión de Caja/).selectOption("APROBADO");
-        const validation = cashier.waitForResponse(
-          (response) =>
-            response.url().endsWith("/validate") &&
-            response.request().method() === "PATCH",
-        );
-        await cashier
-          .getByRole("button", { name: "Confirmar decisión", exact: true })
-          .click();
-        assert.equal((await validation).status(), 200);
-        assert.equal(
-          (
-            await one("SELECT estado FROM inscripciones WHERE id=$1", [
-              enrollment.id,
-            ])
-          ).estado,
-          "MATRICULADO_ACTIVO",
-        );
+        const paymentResponse = await payment;
+        assert.equal(paymentResponse.status(), 200);
+        const financial = (await paymentResponse.json()).data;
+        assert.equal(financial.pago.total_pagado, "30.00");
+        assert.ok(financial.comprobante.id);
+        const persisted = await one("SELECT estado,fecha_formalizacion_matricula FROM inscripciones WHERE id=$1", [enrollment.id]);
+        assert.equal(persisted.estado, "PENDIENTE_PAGO");
+        assert.equal(persisted.fecha_formalizacion_matricula, null);
+        await cashier.getByText(/Cobro confirmado/).waitFor();
+        const downloadPromise = cashier.waitForEvent("download");
+        await cashier.getByRole("button", { name: "Descargar PDF", exact: true }).click();
+        const download = await downloadPromise;
+        const downloaded = path.join(scratch, "cashier-internal-receipt.pdf");
+        await download.saveAs(downloaded);
+        assert.equal((await readFile(downloaded)).subarray(0, 8).toString(), "%PDF-1.4");
+        await screenshot(cashier, "cashier-partial-obligations-collection");
+      },
+      cashier,
+    );
+  if (collected)
+    await step(
+      "UI student account shows the same agreed plan, paid concepts and balance as Caja",
+      async () => {
+        await student.getByRole("navigation").getByRole("link", { name: "Mis solicitudes", exact: true }).click();
+        await student.getByRole("link", { name: "Programa conectado de prueba", exact: true }).click();
+        await student.getByRole("heading", { name: "Estado de cuenta", exact: true }).waitFor();
+        await student.getByText("Plan conectado: matrícula y dos cuotas", { exact: true }).waitFor();
+        const fact = async (label) => student.getByText(label, { exact: true }).locator("xpath=following-sibling::dd").innerText();
+        assert.match(await fact("Matrícula acordada"), /10\.00/);
+        assert.match(await fact("Costo académico acordado"), /100\.00/);
+        assert.match(await fact("Total pagado y aprobado"), /30\.00/);
+        assert.match(await fact("Saldo pendiente"), /80\.00/);
+        const obligations = student.getByRole("region", { name: "Obligaciones y cuotas", exact: true });
+        assert.match(await obligations.getByRole("row").filter({ hasText: "Cuota 1" }).innerText(), /30\.00/);
+        await student.getByRole("button", { name: /^Descargar PDF del comprobante/ }).waitFor();
+        await screenshot(student, "student-authoritative-account");
+      },
+      student,
+    );
+  if (collected && adminReady)
+    matriculated = await step(
+      "UI administrator explicitly activates enrollment after collection; student sees the active course",
+      async () => {
+        await admin.getByRole("navigation").getByRole("link", { name: "Caja y pagos", exact: true }).click();
+        await admin.getByLabel("Nombre, identificación o expediente", { exact: true }).fill("Estudiante Real");
+        await admin.getByRole("row").filter({ hasText: "Estudiante Real Prueba" })
+          .getByRole("button", { name: "Seleccionar estudiante", exact: true }).click();
+        await admin.getByRole("row").filter({ hasText: enrollment.codigo_expediente })
+          .getByRole("button", { name: "Ver estado de cuenta", exact: true }).click();
+        await admin.getByRole("button", { name: "Activar matrícula", exact: true }).click();
+        const dialog = admin.getByRole("dialog", { name: "Activar matrícula", exact: true });
+        await dialog.getByLabel(/^Motivo de la operación/).fill("Decisión administrativa explícita de prueba aislada");
+        const activation = admin.waitForResponse(response => response.url().endsWith(`/billing/enrollments/${enrollment.id}/activate`) && response.request().method() === "POST");
+        await dialog.getByRole("button", { name: "Confirmar operación", exact: true }).click();
+        assert.equal((await activation).status(), 200);
+        const persisted = await one("SELECT estado,fecha_formalizacion_matricula FROM inscripciones WHERE id=$1", [enrollment.id]);
+        assert.equal(persisted.estado, "MATRICULADO_ACTIVO");
+        assert.ok(persisted.fecha_formalizacion_matricula);
         await student
           .getByRole("navigation")
           .getByRole("link", { name: "Mis cursos", exact: true })
@@ -651,7 +715,7 @@ async function main() {
           .waitFor();
         await screenshot(student, "student-active-course");
       },
-      cashier,
+      admin,
     );
   if (matriculated)
     await step(

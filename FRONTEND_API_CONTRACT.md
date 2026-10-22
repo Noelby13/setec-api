@@ -36,7 +36,7 @@ Documentary `aprobado` accepts JSON booleans and recognized multipart strings tr
 
 Document decisions now recheck locked enrollment state after acquiring the cohort lock. Only `EN_REVISION_DOCUMENTAL` and `DOCUMENTACION_OBSERVADA` are documentary-decision states; observations cannot reset reserved, paid, active, withdrawn or completed records. Already-approved positive decisions retain their previous 400 error; unsupported transitions return 409 without writes. Approval respects existing maximum capacity. Committee resolution and waiting-list promotion are not substituted by documentary validation. `CANCELADA`, `FINALIZADA_PENDIENTE_EVAL` and `EVALUADA_SETEC` cohorts reject documentary/payment mutations with 409.
 
-Payment registration requires the applicant's recorded documentary approval as well as enabled cohort collection and the existing eligible states. Decisions lock cohort→enrollment→receipt and allow a pending receipt only once; stale decisions retain 400. A pending receipt cannot reactivate withdrawn, egreso or certified records (409). Rejecting an additional pending receipt leaves an already active matriculation and its date unchanged. Existing normal quorum/reservation/receipt transitions and response envelopes are preserved; no debt, installment or pricing rule is added.
+Payment registration requires the applicant's recorded documentary approval as well as enabled cohort collection and the existing eligible states. Decisions lock cohort→enrollment→receipt and allow a pending receipt only once; stale decisions retain 400. A pending receipt cannot reactivate withdrawn, egreso or certified records (409). Rejecting an additional pending receipt leaves an already active matriculation and its date unchanged. Documentary/quorum rules and payment response envelopes are preserved. The Academic billing extension below adds exact-money plans, accepted obligations, allocation and internal receipts; payment approval no longer activates matriculation.
 
 Cashier discovery has the same top-level pagination envelope as `/enrollments` but exposes only record ID/code, state, student name, program/cohort, recorded cohort prices, collection-enabled flag and quorum counts. Cashier-only detail keeps `{inscripcion,pagos,convalidaciones:[]}` while redacting identity documents, contact data, degrees and admission details. New cashier seed defaults grant only PAGO_VALIDAR. The optional `database/migrations/20261021_cashier_permissions.sql` removes the legacy default admission grant on an existing database; it has NOT been applied. Explicit additional privileges remain effective. Do not rerun the full schema or seed on existing data to apply this change.
 
@@ -181,7 +181,7 @@ Valores literales, sensibles a mayúsculas. Fuente: `database/init.sql` y `src/t
 | `rol_participacion_ep_enum` | `ESTUDIANTE_EVALUADO`, `PARTICIPANTE_ASISTENTE`, `PONENTE_CONGRESO` |
 | `escala_cualitativa_snepa_enum` | `APRENDIZAJE_AVANZADO`, `APRENDIZAJE_SATISFACTORIO`, `APRENDIZAJE_FUNDAMENTAL`, `APRENDIZAJE_INICIAL` |
 | `metodo_pago_enum` | `BAUCHER_BANCARIO`, `CAJA_ADMINISTRATIVA`, `TRANSFERENCIA`, `PASARELA_ONLINE` |
-| `estado_pago_enum` | `PENDIENTE_REVISION`, `APROBADO`, `RECHAZADO`, `REEMBOLSADO` |
+| `estado_pago_enum` | `PENDIENTE_REVISION`, `APROBADO`, `RECHAZADO`, `REEMBOLSADO`, `ANULADO` |
 
 ### Doce dominios adicionales: CHECK, no ENUM SQL
 
@@ -2248,7 +2248,7 @@ Ejemplo de respuesta de éxito:
 ```json
 {
   "success": true,
-  "message": "Pago aprobado y matrícula formalizada exitosamente",
+  "message": "Pago aprobado. La activación de matrícula requiere una decisión administrativa.",
   "data": {
     "pago": {
       "id": "00000019-1111-4111-8111-111111111111",
@@ -4600,7 +4600,8 @@ PATCH validate-documents {aprobado:true}
        inscripción actual y todas las INSCRITO_RESERVADO → PENDIENTE_PAGO
 
 POST payments → pago.PENDIENTE_REVISION e inscripción.PAGO_EN_REVISION
-PATCH payments/.../validate {estado:APROBADO} → MATRICULADO_ACTIVO
+PATCH payments/.../validate {estado:APROBADO} → aplica pago; no activa matrícula
+POST billing/enrollments/:id/activate {motivo} → MATRICULADO_ACTIVO (INSCRIPCION_VALIDAR)
 PATCH payments/.../validate {estado:RECHAZADO} → PENDIENTE_PAGO (puede reintentar)
 ```
 
@@ -4611,7 +4612,7 @@ El umbral real es **cupo_minimo**, default 15; no fijar 15 en el componente visu
 ```ts
 const canSubmitPayment =
   enrollment.cobro_habilitado === true &&
-  ["PENDIENTE_PAGO", "PAGO_EN_REVISION", "DOCUMENTACION_OBSERVADA"]
+  ["PENDIENTE_PAGO", "PAGO_EN_REVISION", "DOCUMENTACION_OBSERVADA", "MATRICULADO_ACTIVO"]
     .includes(enrollment.estado);
 ```
 
@@ -4725,3 +4726,33 @@ Otras precauciones funcionales verificadas:
 - [ ] Mostrar errores de fila de Excel aunque success=true, y bloquear importación con actas cerradas.
 - [ ] No prometer generación de PDF/QR ni verificación pública operativa hasta resolver los desajustes SQL.
 - [ ] Integrar `frontend-types.ts` sin importar Express, Zod, PostgreSQL ni módulos internos del backend.
+
+
+## Academic billing extension (2026-10-21)
+
+The API remains canonical. All new amounts use exact decimal strings (maximum two decimal places; NUMERIC(12,2)); no implicit rounding, interest, penalties or new discount rule. Prices in an accepted enrollment agreement are immutable snapshots. The existing documentary-approval plus cohort-quorum transition creates obligations for the new and previously reserved students, once. GET account never creates debt. A zero enrollment fee creates no enrollment obligation. A free cohort creates an agreement with no charges. Administrative matriculation activation is explicit, including free cohorts; recording/approving money does not activate enrollment.
+
+| Endpoint (all under `/api/billing`) | Permission and behavior |
+| --- | --- |
+| `GET /cohorts/:id/plans` | COHORTE_GESTIONAR, INSCRIPCION_VALIDAR or PAGO_VALIDAR; all immutable offer versions |
+| `POST /cohorts/:id/plans` | COHORTE_GESTIONAR; publish name/version, mode, separate enrollment fee and academic cost, installments, optional due dates and real program component IDs |
+| `GET /enrollments/:id/account` | Own student, INSCRIPCION_VALIDAR or PAGO_VALIDAR; agreed amounts, obligations, approved/pending allocations, exact balance, overdue/next due date, history and internal receipt metadata |
+| `POST /enrollments/:id/plan` | INSCRIPCION_VALIDAR; `{plan_id}` chooses an offer before obligations are accepted |
+| `POST /enrollments/:id/accept` | INSCRIPCION_VALIDAR; `{plan_id?, motivo?}` accepts the visible offer. Historical approved payments require an explicit reason confirming the agreed price and recognizing credits atomically. Insufficient agreed total rejects the whole reconciliation |
+| `POST /enrollments/:id/activate` | INSCRIPCION_VALIDAR; `{motivo}` explicitly activates an approved, quorum-eligible enrollment regardless of payment coverage; reason is audited |
+| `POST /enrollments/:id/payments` | PAGO_VALIDAR; immediate atomic collection against selected obligations, approval and internal receipt; does not activate matriculation |
+| `POST /enrollments/:id/payments/:paymentId/cancel` | PAGO_ANULAR; `{motivo}` voids an approved collection, restores available debt and annotates the retained receipt |
+| `POST /enrollments/:id/obligations/:obligationId/cancel` | OBLIGACION_ANULAR; `{motivo}` only for obligations without approved/pending allocations |
+| `GET /enrollments/:id/receipts/:receiptId.pdf` | Own student, INSCRIPCION_VALIDAR or PAGO_VALIDAR; private PDF with uniquely assigned `CI-` number and any void annotation; suitable for downloading/printing |
+| `GET /enrollments/:id/audit` | PAGO_VALIDAR; latest 200 economic events |
+| `GET /dashboard` | COHORTE_GESTIONAR, INSCRIPCION_VALIDAR or PAGO_VALIDAR; server totals, pending/overdue amounts, today's approved operations, recent collections and receipt links |
+
+Every success above is HTTP 200 `{success:true,data:...}`. Invalid input is 400, unauthorized access 403, missing resources 404, and inconsistent state/retry/available balance 409. The plan modes are GRATUITO, PAGO_UNICO, CUOTAS and MODULOS; academic installment amounts sum exactly to the academic price, excluding the enrollment fee. MODULOS requires actual components from this cohort's program. A different offer may be selected before acceptance. Publishing a default offer updates current cohort reference prices atomically, but never accepted obligations. Subsequent reference-price edits use a new plan version.
+
+Example collection: `{ "clave_idempotencia": "a-client-generated-unique-key", "metodo_pago": "CAJA_ADMINISTRATIVA", "numero_referencia_o_recibo": "CAJA-001", "aplicaciones": [{ "obligacion_id": "<UUID>", "importe": "4000.00" }] }`. Total is computed on the server. Retain the key across uncertain/retried requests. Reusing a key/reference with changed financial data returns 409; an exact replay returns the same payment and receipt without another collection. Pending student vouchers reserve available amounts but do not reduce the approved outstanding balance; rejection releases the reservation. Overpayments, duplicate allocations, cancelled obligations and different-enrollment allocations are rejected transactionally.
+
+The existing `POST /api/enrollments/:id/payments` remains the reviewable voucher-reporting interface. `monto_subtotal` and positive `total_pagado` are required, money must have at most two decimals and `subtotal - descuento = total`; optional `clave_idempotencia` and `aplicaciones` are supported (JSON arrays may be encoded as JSON strings in multipart). Legacy clients without selections allocate to outstanding obligations in ledger order and derive a stable retry key from the reference. Active matriculated students can report subsequent installments; review never revokes their administrator activation. PASARELA_ONLINE is not enabled. Existing payment approval still returns `{pago,inscripcion}`, now with a separate internal receipt in the account and no automatic academic activation.
+
+Obligation states are calculated from approved allocations/due date: PENDIENTE, PARCIALMENTE_PAGADO, PAGADO, VENCIDO; ANULADO is explicit audited metadata. Cancellation does not rewrite accepted prices or delete history. An existing payment may expose ANULADO. Cancellation permissions are separate, initially unassigned to ordinary cashier roles; SUPER_ADMIN retains the existing override. An internal receipt is not a fiscal invoice. Tax identifiers, fiscal authorization, authorized numbering/format and fiscal correction procedures remain pending institutional approval. No bank/card processing or online collection is implemented.
+
+Historical debt is never inferred from today's tariff merely because old payments exist. Account returns `requiere_conciliacion:true` and an unknown (`null`) outstanding balance until an administrator explicitly confirms the agreement and existing credits. Agreements without known prices likewise expose null amounts rather than a fabricated zero balance. Configure an explicit agreed-price plan when a pre-existing cohort discount needs interpretation; no automatic new discount calculation is introduced.

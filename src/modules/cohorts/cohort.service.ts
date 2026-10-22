@@ -17,7 +17,8 @@ import {
   UpdateProgramacionInput,
 } from './cohort.schema';
 import { AppError } from '../../middlewares/error.middleware';
-import { pool } from '../../db/pool';
+import { pool, withTransaction } from '../../db/pool';
+import { cents } from '../billing/billing.money';
 import { ModalidadEducativa } from '../../types/enums';
 
 export class CohortService {
@@ -182,11 +183,23 @@ export class CohortService {
     input: UpdateCohorteInput,
     excepcionCupoFileUrl?: string
   ): Promise<CohorteRecord> {
-    const current = await CohortDao.findCohorteById(id);
+    return withTransaction(async db => {
+    await db.query('SELECT id FROM cohortes_apertura WHERE id=$1 FOR UPDATE', [id]);
+    const current = await CohortDao.findCohorteById(id, db);
     if (!current) {
       throw new AppError('Cohorte de apertura no encontrada', 404);
     }
 
+    const changesPrice = (input.precio_matricula !== undefined && cents(input.precio_matricula) !== cents(current.precio_matricula)) ||
+      (input.precio_total_cohorte !== undefined && cents(input.precio_total_cohorte) !== cents(current.precio_total_cohorte));
+    if (changesPrice) {
+      const plan = await db.query('SELECT id FROM planes_pago_cohorte WHERE cohorte_id=$1 AND predeterminado', [id]);
+      if (plan.rows.length) throw new AppError('Cambie los importes publicando una nueva versión en Plan de pagos; los acuerdos existentes se conservan', 409);
+    }
+    if (input.programa_id && input.programa_id !== current.programa_id) {
+      const used = await db.query('SELECT id FROM planes_pago_cohorte WHERE cohorte_id=$1 UNION ALL SELECT a.id FROM acuerdos_pago_inscripcion a JOIN inscripciones i ON i.id=a.inscripcion_id WHERE i.cohorte_id=$1 LIMIT 1', [id]);
+      if (used.rows.length) throw new AppError('No se puede cambiar el programa de una cohorte con planes u obligaciones económicas', 409);
+    }
     const finalExcepcionUrl = excepcionCupoFileUrl || input.excepcion_cupo_setec_url || current.excepcion_cupo_setec_url;
 
     // Check health science vs virtual modality
@@ -238,7 +251,7 @@ export class CohortService {
 
     // Check code collision if modified
     if (input.codigo_cohorte && input.codigo_cohorte !== current.codigo_cohorte) {
-      const existing = await CohortDao.findCohorteByCodigo(input.codigo_cohorte);
+      const existing = await CohortDao.findCohorteByCodigo(input.codigo_cohorte, db);
       if (existing && existing.id !== id) {
         throw new AppError(
           `El código de cohorte "${input.codigo_cohorte.toUpperCase()}" ya está en uso`,
@@ -252,11 +265,12 @@ export class CohortService {
       ...(excepcionCupoFileUrl ? { excepcion_cupo_setec_url: excepcionCupoFileUrl } : {}),
     };
 
-    const updated = await CohortDao.updateCohorte(id, data);
+    const updated = await CohortDao.updateCohorte(id, data, db);
     if (!updated) {
       throw new AppError('Error al actualizar la cohorte', 500);
     }
     return updated;
+    });
   }
 
   /**

@@ -36,6 +36,8 @@ const ROLES: RoleDefinition[] = [
 ];
 
 const PERMISOS: PermisoDefinition[] = [
+  { codigo: 'PAGO_ANULAR', nombre: 'Anulación de cobros', descripcion: 'Anular cobros aprobados con motivo y auditoría; no se concede automáticamente a Caja' },
+  { codigo: 'OBLIGACION_ANULAR', nombre: 'Anulación de obligaciones', descripcion: 'Anular obligaciones sin pagos aplicados, con motivo y auditoría' },
   {
     codigo: 'CERTIFICADO_REVOCAR',
     nombre: 'Revocación de certificados',

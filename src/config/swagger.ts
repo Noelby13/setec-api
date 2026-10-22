@@ -1,3 +1,4 @@
+import { billingOpenApiPaths } from '../modules/billing/billing.openapi';
 import swaggerUi from 'swagger-ui-express';
 
 export const swaggerDocument = {
@@ -37,6 +38,7 @@ Sistema de Gestión Académica y Control Normativo para Programas de Posgrado y 
     },
   ],
   tags: [
+    { name: 'Billing', description: 'Exact academic obligations, cashier operations and internal receipts' },
     { name: 'Auth', description: 'Autenticación, emisión y renovación de tokens JWT, control de sesiones' },
     { name: 'Taxonomy', description: 'Áreas de conocimiento y etiquetas temáticas del catálogo' },
     { name: 'Infrastructure', description: 'Sedes universitarias autorizadas por SETEC y gestión de docentes' },
@@ -329,7 +331,7 @@ Sistema de Gestión Académica y Control Normativo para Programas de Posgrado y 
         properties: {
           metodo_pago: {
             type: 'string',
-            enum: ['BAUCHER_BANCARIO', 'CAJA_ADMINISTRATIVA', 'TRANSFERENCIA', 'PASARELA_ONLINE'],
+            enum: ['BAUCHER_BANCARIO', 'CAJA_ADMINISTRATIVA', 'TRANSFERENCIA'],
             example: 'BAUCHER_BANCARIO',
           },
           numero_referencia_o_recibo: { type: 'string', example: 'REF-BAC-98765432' },
@@ -450,6 +452,7 @@ Sistema de Gestión Académica y Control Normativo para Programas de Posgrado y 
     },
   },
   paths: {
+    ...billingOpenApiPaths,
     // ==========================================
     // HEALTH CHECK
     // ==========================================
@@ -1152,7 +1155,7 @@ Sistema de Gestión Académica y Control Normativo para Programas de Posgrado y 
           required: true,
           content: { 'application/json': { schema: { $ref: '#/components/schemas/ValidatePaymentRequest' } } },
         },
-        responses: { 200: { description: 'Pago validado. Si cubre matrícula, activa MATRICULADO_ACTIVO.' } },
+        responses: { 200: { description: 'Pago validado y aplicado a obligaciones. La matrícula se activa únicamente por decisión administrativa.' } },
       },
     },
     '/enrollments/{id}/convalidations': {

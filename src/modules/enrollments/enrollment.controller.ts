@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { Request, Response, NextFunction } from 'express';
 import {
   EnrollmentService,
@@ -189,9 +191,10 @@ export class EnrollmentController {
 
       if (baucherFile) {
         uploadedFiles.comprobante_baucher_url = getRelativeUploadPath(baucherFile);
+        uploadedFiles.comprobante_sha256 = createHash('sha256').update(await readFile(baucherFile.path)).digest('hex');
       }
 
-      const result = await EnrollmentService.registerPayment(id, body, uploadedFiles);
+      const result = await EnrollmentService.registerPayment(id, body, uploadedFiles, req.user?.id || null);
 
       res.status(201).json({
         success: true,
@@ -222,7 +225,7 @@ export class EnrollmentController {
         success: true,
         message:
           body.estado === 'APROBADO'
-            ? 'Pago aprobado y matrícula formalizada exitosamente'
+            ? 'Pago aprobado. La activación de matrícula requiere una decisión administrativa.'
             : 'Pago rechazado exitosamente',
         data: result,
       });

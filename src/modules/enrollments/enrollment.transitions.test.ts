@@ -1,3 +1,4 @@
+import { PaymentService } from "../billing/billing.payments";
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
 import express from "express";
@@ -15,6 +16,7 @@ function fixture(state = "EN_REVISION_DOCUMENTAL") {
     cohorte_id: "cohort",
     aspirante_id: "applicant",
     estado: state,
+    observaciones_administracion: null,
     fecha_aprobacion_documental:
       state === "EN_REVISION_DOCUMENTAL" || state === "DOCUMENTACION_OBSERVADA"
         ? null
@@ -111,6 +113,8 @@ function fixture(state = "EN_REVISION_DOCUMENTAL") {
     "updateInscripcionEstado",
     async (_id: string, state: string, extra: any) => {
       enrollment.estado = state;
+      if ("observaciones" in extra)
+        enrollment.observaciones_administracion = extra.observaciones;
       if (extra.fechaAprobacionDocumental)
         enrollment.fecha_aprobacion_documental = "2026-10-21";
       if (extra.fechaFormalizacionMatricula)
@@ -135,6 +139,16 @@ function fixture(state = "EN_REVISION_DOCUMENTAL") {
     payments.push(payment);
     return payment;
   });
+  // These fixtures isolate academic transitions; real obligation accounting is tested against PostgreSQL.
+  mock.method(PaymentService, "prepare", async () => ({
+    existing: null,
+    key: "test-transition",
+    fingerprint: "test",
+    applications: [],
+  }));
+  mock.method(PaymentService, "reserve", async () => {});
+  mock.method(PaymentService, "beforeApproval", async () => {});
+  mock.method(PaymentService, "issueReceipt", async () => ({ id: "receipt" }));
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -255,7 +269,7 @@ test("concurrent payment decisions admit only one decision for a pending receipt
   );
   assert.deepEqual(responses.map((r) => r.status).sort(), [200, 400]);
   assert.equal(f.payments[0].estado, "APROBADO");
-  assert.equal(f.enrollment.estado, "MATRICULADO_ACTIVO");
+  assert.equal(f.enrollment.estado, "PENDIENTE_PAGO");
 });
 test("rejecting another pending receipt preserves established matriculation and its date", async () => {
   const f = fixture("MATRICULADO_ACTIVO"),
@@ -385,3 +399,38 @@ test("approval below quorum preserves a reserved place without enabling collecti
   assert.equal(f.cohort.cupos_actuales_verificados, 1);
   assert.equal(f.cohort.cobro_habilitado, false);
 });
+
+test("approving payment leaves matriculation for an explicit administrator decision", async () => {
+  const f = fixture("PAGO_EN_REVISION");
+  const response = await httpRequest(
+    f.app,
+    "/payments/payment/validate",
+    "PATCH",
+    { estado: "APROBADO" },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(f.payments[0].estado, "APROBADO");
+  assert.equal(f.enrollment.estado, "PENDIENTE_PAGO");
+  assert.equal(f.enrollment.fecha_formalizacion_matricula, null);
+});
+
+for (const reason of ["Comprobante ilegible de prueba", undefined]) {
+  test(`rejected voucher preserves enrollment observations: ${reason || "existing default"}`, async () => {
+    const f = fixture("PAGO_EN_REVISION");
+    const response = await httpRequest(
+      f.app,
+      "/payments/payment/validate",
+      "PATCH",
+      { estado: "RECHAZADO", ...(reason ? { motivo_rechazo: reason } : {}) },
+    );
+    assert.equal(response.status, 200);
+    const expected = reason || "Comprobante de pago rechazado por tesorería";
+    assert.equal(
+      response.body.data.inscripcion.observaciones_administracion,
+      expected,
+    );
+    assert.equal(f.enrollment.observaciones_administracion, expected);
+    assert.equal(f.enrollment.estado, "PENDIENTE_PAGO");
+    assert.equal(f.enrollment.fecha_formalizacion_matricula, null);
+  });
+}

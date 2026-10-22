@@ -86,6 +86,7 @@ export const EstadoPago = {
   APROBADO: 'APROBADO',
   RECHAZADO: 'RECHAZADO',
   REEMBOLSADO: 'REEMBOLSADO',
+  ANULADO: 'ANULADO',
 } as const;
 export type EstadoPago = (typeof EstadoPago)[keyof typeof EstadoPago];
 

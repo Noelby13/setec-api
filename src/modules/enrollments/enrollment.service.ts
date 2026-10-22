@@ -1,3 +1,5 @@
+import { PaymentService } from '../billing/billing.payments';
+import { BillingService } from '../billing/billing.service';
 import crypto from 'crypto';
 import { pool, withTransaction, DbClient } from '../../db/pool';
 import { AppError } from '../../middlewares/error.middleware';
@@ -30,6 +32,7 @@ export interface UploadedEnrollmentFiles {
 
 export interface UploadedPaymentFiles {
   comprobante_baucher_url?: string;
+  comprobante_sha256?: string;
 }
 
 export interface UploadedConvalidationFiles {
@@ -293,6 +296,7 @@ export class EnrollmentService {
         client
       );
 
+      await BillingService.generateEligibleForCohort(cohorte.id, client);
       const detailed = await EnrollmentDao.findDetailedById(enrollmentId, client);
       return detailed!;
     });
@@ -310,7 +314,8 @@ export class EnrollmentService {
   static async registerPayment(
     enrollmentId: string,
     data: CreatePaymentInput,
-    uploadedFiles?: UploadedPaymentFiles
+    uploadedFiles?: UploadedPaymentFiles,
+    actorId: string | null = null
   ): Promise<PagoInscripcionRecord> {
     return await withTransaction(async (client) => {
       const { inscripcion, cohorte } = await this.lockEnrollmentContext(enrollmentId, client);
@@ -331,14 +336,17 @@ export class EnrollmentService {
       if (
         inscripcion.estado !== EstadoInscripcion.PENDIENTE_PAGO &&
         inscripcion.estado !== EstadoInscripcion.PAGO_EN_REVISION &&
-        inscripcion.estado !== EstadoInscripcion.DOCUMENTACION_OBSERVADA
+        inscripcion.estado !== EstadoInscripcion.DOCUMENTACION_OBSERVADA &&
+        inscripcion.estado !== EstadoInscripcion.MATRICULADO_ACTIVO
       ) {
         throw new AppError(
-          `La inscripción se encuentra en estado '${inscripcion.estado}'. Solo inscripciones en 'PENDIENTE_PAGO' pueden registrar pagos.`,
+          `La inscripción se encuentra en estado '${inscripcion.estado}'. Solo inscripciones habilitadas para cobro o matriculadas pueden registrar pagos.`,
           400
         );
       }
 
+      const prepared = await PaymentService.prepare(client, inscripcion, cohorte, data, uploadedFiles?.comprobante_sha256 || null);
+      if (prepared.existing) return prepared.existing;
       const comprobanteUrl =
         uploadedFiles?.comprobante_baucher_url || data.comprobante_baucher_url || null;
 
@@ -357,12 +365,15 @@ export class EnrollmentService {
           concepto: data.concepto,
           estado: EstadoPago.PENDIENTE_REVISION,
           fecha_pago_reportada: data.fecha_pago_reportada,
+          clave_idempotencia: prepared.key,
+          solicitud_hash: prepared.fingerprint,
         },
         client
       );
 
-      // 4. Update enrollment state to PAGO_EN_REVISION
-      await EnrollmentDao.updateInscripcionEstado(
+      await PaymentService.reserve(client, pago, prepared.applications, actorId);
+      // Payment review must not revoke an administrator's established matriculation.
+      if (inscripcion.estado !== EstadoInscripcion.MATRICULADO_ACTIVO) await EnrollmentDao.updateInscripcionEstado(
         enrollmentId,
         EstadoInscripcion.PAGO_EN_REVISION,
         {},
@@ -375,8 +386,8 @@ export class EnrollmentService {
 
   /**
    * Cashier / Admin validates a payment.
-   * If approved: updates payment to 'APROBADO', enrollment to 'MATRICULADO_ACTIVO',
-   * and sets fecha_formalizacion_matricula = NOW() in the same transaction.
+   * Approval applies exact obligation allocations and issues an internal receipt.
+   * Matriculation requires a separate explicit administrator decision.
    * If rejected: updates payment to 'RECHAZADO' and returns enrollment to 'PENDIENTE_PAGO'.
    */
   static async validatePayment(
@@ -408,7 +419,8 @@ export class EnrollmentService {
       let updatedPago: PagoInscripcionRecord | null;
 
       if (input.estado === EstadoPago.APROBADO) {
-        // Approve payment
+        await PaymentService.beforeApproval(client, pago, inscripcion, cohorte, validatorUserId);
+        // Financial approval is independent from explicit administrator activation.
         updatedPago = await EnrollmentDao.updatePagoValidation(
           paymentId,
           EstadoPago.APROBADO,
@@ -417,13 +429,7 @@ export class EnrollmentService {
           client
         );
 
-        // Update enrollment to MATRICULADO_ACTIVO and set fecha_formalizacion_matricula = NOW()
-        if (!preserveMatriculation) await EnrollmentDao.updateInscripcionEstado(
-          pago.inscripcion_id,
-          EstadoInscripcion.MATRICULADO_ACTIVO,
-          { fechaFormalizacionMatricula: true },
-          client
-        );
+        await PaymentService.issueReceipt(client, updatedPago!, validatorUserId);
       } else {
         // Reject payment
         updatedPago = await EnrollmentDao.updatePagoValidation(
@@ -434,14 +440,16 @@ export class EnrollmentService {
           client
         );
 
-        // Revert enrollment to PENDIENTE_PAGO so applicant can re-submit
-        if (!preserveMatriculation) await EnrollmentDao.updateInscripcionEstado(
-          pago.inscripcion_id,
-          EstadoInscripcion.PENDIENTE_PAGO,
-          { observaciones: input.motivo_rechazo || 'Comprobante de pago rechazado por tesorería' },
-          client
-        );
       }
+      if (!preserveMatriculation) {
+        const pending = await client.query(`SELECT count(*)::int AS count FROM pagos_inscripcion WHERE inscripcion_id=$1 AND estado='PENDIENTE_REVISION'`, [inscripcion.id]);
+        await EnrollmentDao.updateInscripcionEstado(inscripcion.id,
+          pending.rows[0]?.count ? EstadoInscripcion.PAGO_EN_REVISION : EstadoInscripcion.PENDIENTE_PAGO,
+          input.estado === EstadoPago.RECHAZADO
+            ? { observaciones: input.motivo_rechazo || 'Comprobante de pago rechazado por tesorería' }
+            : {}, client);
+      }
+      await BillingService.audit(client, input.estado === EstadoPago.APROBADO ? 'PAGO_APROBADO' : 'PAGO_RECHAZADO', validatorUserId, inscripcion.id, cohorte.id, { pago_id: pago.id }, input.motivo_rechazo || undefined);
 
       const detailedInscripcion = await EnrollmentDao.findDetailedById(pago.inscripcion_id, client);
       return {

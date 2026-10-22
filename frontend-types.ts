@@ -107,6 +107,7 @@ export const EstadoPago = {
   APROBADO: 'APROBADO',
   RECHAZADO: 'RECHAZADO',
   REEMBOLSADO: 'REEMBOLSADO',
+  ANULADO: 'ANULADO',
 } as const;
 export type EstadoPago = (typeof EstadoPago)[keyof typeof EstadoPago];
 
@@ -229,6 +230,8 @@ export const PermisoCodigo = {
   COHORTE_GESTIONAR: 'COHORTE_GESTIONAR',
   INSCRIPCION_VALIDAR: 'INSCRIPCION_VALIDAR',
   PAGO_VALIDAR: 'PAGO_VALIDAR',
+  PAGO_ANULAR: 'PAGO_ANULAR',
+  OBLIGACION_ANULAR: 'OBLIGACION_ANULAR',
   CONVALIDACION_DICTAMINAR: 'CONVALIDACION_DICTAMINAR',
   NOTA_IMPORTAR: 'NOTA_IMPORTAR',
   NOTA_MODIFICAR: 'NOTA_MODIFICAR',
@@ -936,9 +939,10 @@ export type CreateEnrollmentMultipart<F = UploadDescriptor> = Omit<CreateEnrollm
 export interface ValidateDocumentsRequest { /** Default true. */ aprobado?: BooleanInput; observaciones_administracion?: string | null }
 export interface CreatePaymentRequest {
   metodo_pago: MetodoPago; numero_referencia_o_recibo: string; banco_origen?: string | null;
-  /** Default 0. */ monto_subtotal?: NumericInput;
+  monto_subtotal: NumericInput;
   /** Default 0. */ descuento_aplicado?: NumericInput;
-  /** Default 0. */ total_pagado?: NumericInput;
+  total_pagado: NumericInput;
+  clave_idempotencia?: string; aplicaciones?: BillingAllocation[];
   concepto: string; comprobante_baucher_url?: string | null; fecha_pago_reportada?: string;
 }
 export type CreatePaymentMultipart<F = UploadDescriptor> = Omit<CreatePaymentRequest, 'comprobante_baucher_url'> &
@@ -1396,7 +1400,7 @@ export type ParsedCreateEnrollmentInput = Override<CreateEnrollmentRequest, {
 }>;
 export type ParsedValidateDocumentsInput = Override<ValidateDocumentsRequest, { aprobado: boolean }>;
 export type ParsedCreatePaymentInput = Override<CreatePaymentRequest,
-  { monto_subtotal: number; descuento_aplicado: number; total_pagado: number }>;
+  { monto_subtotal: string; descuento_aplicado: string; total_pagado: string }>;
 export type ParsedCreateConvalidationInput = Override<CreateConvalidationRequest, { creditos_reconocidos: number }>;
 export type ParsedListEnrollmentsQueryInput = Override<ListEnrollmentsQuery, { page?: number; limit?: number }>;
 export type ParsedCreateExpedienteInput = Override<CreateExpedienteRequest,
@@ -1453,3 +1457,29 @@ export interface PostgresEnumTypes {
 export type ApiEndpointParams<K extends ApiEndpointKey> = ApiEndpointMap[K]['params'];
 export type ApiEndpointQuery<K extends ApiEndpointKey> = ApiEndpointMap[K]['query'];
 export type ApiEndpointResponse<K extends ApiEndpointKey> = ApiEndpointMap[K]['response'];
+
+
+/** Academic billing: monetary responses and new requests use exact decimal strings. */
+export type BillingMode = 'GRATUITO' | 'PAGO_UNICO' | 'CUOTAS' | 'MODULOS';
+export interface BillingInstallment { concepto: string; importe: string; fecha_vencimiento?: DateOnly | null; componente_id?: UUID | null }
+export interface BillingPlanRequest { nombre: string; modalidad: BillingMode; predeterminado?: boolean; monto_matricula: string; precio_academico: string; cuotas: BillingInstallment[] }
+export interface BillingPlan extends BillingPlanRequest { id: UUID; cohorte_id: UUID; version: number; creado_en: DateTime }
+export interface BillingAllocation { obligacion_id: UUID; importe: string }
+export interface BillingCollectRequest { clave_idempotencia: string; metodo_pago: Exclude<MetodoPago, 'PASARELA_ONLINE'>; numero_referencia_o_recibo: string; banco_origen?: string | null; fecha_pago_reportada?: string; aplicaciones: BillingAllocation[] }
+export interface BillingObligation { id: UUID; acuerdo_id: UUID; inscripcion_id: UUID; numero: number; tipo: 'MATRICULA' | 'ACADEMICO'; concepto: string; importe: string; fecha_vencimiento: DateOnly | null; componente_id: UUID | null; anulada_en: DateTime | null; pagado: string; en_revision: string; saldo: string; disponible: string; estado: 'PENDIENTE' | 'PARCIALMENTE_PAGADO' | 'PAGADO' | 'VENCIDO' | 'ANULADO' }
+export interface BillingReceipt { id: UUID; numero: string; pago_id: UUID; inscripcion_id?: UUID; emitido_en: DateTime; anulado_en: DateTime | null; motivo_anulacion?: string | null; total: string }
+export interface BillingAgreement { id: UUID; inscripcion_id: UUID; plan_id: UUID | null; nombre_plan: string; modalidad: BillingMode; monto_matricula: string; precio_academico: string; aceptado_en: DateTime }
+export interface BillingAccount { inscripcion: Pick<EnrollmentDetail, 'id' | 'codigo_expediente' | 'estado' | 'cohorte_id' | 'programa_id' | 'programa_nombre' | 'cohorte_codigo' | 'aspirante_nombres' | 'aspirante_apellidos' | 'cobro_habilitado'>; acuerdo: BillingAgreement | null; obligaciones: BillingObligation[]; pagos: PagoInscripcionRow[]; requiere_conciliacion: boolean; comprobantes: BillingReceipt[]; resumen: { monto_matricula: string | null; costo_academico: string | null; total_comprometido: string | null; total_pagado: string; saldo_pendiente: string | null; matricula_pendiente: string | null; en_revision: string; importe_anulado: string; vencido: string | null; obligaciones_vencidas: number; proximo_vencimiento: DateOnly | null } }
+export interface BillingCollectResult { pago: PagoInscripcionRow; comprobante: BillingReceipt | null; reintento: boolean }
+export interface ApiEndpointMap<F = UploadDescriptor> {
+  'GET /api/billing/cohorts/:id/plans': ApiEndpoint<IdParam, NoInput, NoInput, ApiSuccess<BillingPlan[]>, 200, true, 'COHORTE_GESTIONAR' | 'INSCRIPCION_VALIDAR' | 'PAGO_VALIDAR'>;
+  'POST /api/billing/cohorts/:id/plans': ApiEndpoint<IdParam, NoInput, BillingPlanRequest, ApiSuccess<BillingPlan>, 200, true, 'COHORTE_GESTIONAR', 'json'>;
+  'GET /api/billing/enrollments/:id/account': ApiEndpoint<IdParam, NoInput, NoInput, ApiSuccess<BillingAccount>, 200, true>;
+  'POST /api/billing/enrollments/:id/plan': ApiEndpoint<IdParam, NoInput, {plan_id: UUID}, ApiSuccess<{inscripcion_id: UUID; plan_id: UUID}>, 200, true, 'INSCRIPCION_VALIDAR', 'json'>;
+  'POST /api/billing/enrollments/:id/accept': ApiEndpoint<IdParam, NoInput, {plan_id?: UUID; motivo?: string}, ApiSuccess<BillingAgreement>, 200, true, 'INSCRIPCION_VALIDAR', 'json'>;
+  'POST /api/billing/enrollments/:id/activate': ApiEndpoint<IdParam, NoInput, {motivo: string}, ApiSuccess<InscripcionRow>, 200, true, 'INSCRIPCION_VALIDAR', 'json'>;
+  'POST /api/billing/enrollments/:id/payments': ApiEndpoint<IdParam, NoInput, BillingCollectRequest, ApiSuccess<BillingCollectResult>, 200, true, 'PAGO_VALIDAR', 'json'>;
+  'POST /api/billing/enrollments/:id/payments/:paymentId/cancel': ApiEndpoint<IdParam & PaymentIdParam, NoInput, {motivo: string}, ApiSuccess<PagoInscripcionRow>, 200, true, 'PAGO_ANULAR', 'json'>;
+  'POST /api/billing/enrollments/:id/obligations/:obligationId/cancel': ApiEndpoint<IdParam & {obligationId: UUID}, NoInput, {motivo: string}, ApiSuccess<BillingObligation>, 200, true, 'OBLIGACION_ANULAR', 'json'>;
+  'GET /api/billing/enrollments/:id/receipts/:receiptId.pdf': ApiEndpoint<IdParam & {receiptId: UUID}, NoInput, NoInput, CertificatePdfDownload, 200, true>;
+}

@@ -139,12 +139,14 @@ export interface CreatePagoDbData {
   numero_referencia_o_recibo: string;
   banco_origen?: string | null;
   comprobante_baucher_url?: string | null;
-  monto_subtotal: number;
-  descuento_aplicado: number;
-  total_pagado: number;
+  monto_subtotal: number | string;
+  descuento_aplicado: number | string;
+  total_pagado: number | string;
   concepto: string;
   estado: string;
   fecha_pago_reportada?: string;
+  clave_idempotencia?: string;
+  solicitud_hash?: string;
 }
 
 export interface CreateConvalidacionDbData {
@@ -572,8 +574,8 @@ export class EnrollmentDao {
         total_pagado,
         concepto,
         estado,
-        fecha_pago_reportada
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, NOW()))
+        fecha_pago_reportada, clave_idempotencia, solicitud_hash
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, NOW()), $13, $14)
       RETURNING *
     `;
     const values = [
@@ -589,6 +591,8 @@ export class EnrollmentDao {
       data.concepto,
       data.estado,
       data.fecha_pago_reportada ?? null,
+      data.clave_idempotencia ?? null,
+      data.solicitud_hash ?? null,
     ];
     const result = await db.query<PagoInscripcionRecord>(query, values);
     return result.rows[0];

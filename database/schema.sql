@@ -63,7 +63,7 @@ CREATE TYPE escala_cualitativa_snepa_enum AS ENUM (
 );
 
 CREATE TYPE metodo_pago_enum AS ENUM ('BAUCHER_BANCARIO', 'CAJA_ADMINISTRATIVA', 'TRANSFERENCIA', 'PASARELA_ONLINE');
-CREATE TYPE estado_pago_enum AS ENUM ('PENDIENTE_REVISION', 'APROBADO', 'RECHAZADO', 'REEMBOLSADO');
+CREATE TYPE estado_pago_enum AS ENUM ('PENDIENTE_REVISION', 'APROBADO', 'RECHAZADO', 'REEMBOLSADO', 'ANULADO');
 
 -- ============================================================================
 -- 2. MÓDULO DE SEGURIDAD, AUTENTICACIÓN Y USUARIOS (Heredado de V2 -> UUID)
@@ -539,6 +539,117 @@ CREATE TABLE publicaciones_cientificas_estudiante (
     evidencia_pdf_url TEXT NOT NULL,
     validado_coordinacion BOOLEAN DEFAULT FALSE
 );
+
+-- Academic billing: versioned offers and immutable accepted obligations.
+-- Additive academic billing model. Run only against an explicitly authorized database.
+-- No historical price/debt is inferred and no existing records are rewritten.
+CREATE TABLE IF NOT EXISTS planes_pago_cohorte (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cohorte_id UUID NOT NULL REFERENCES cohortes_apertura(id),
+  nombre VARCHAR(120) NOT NULL,
+  version INTEGER NOT NULL CHECK (version > 0),
+  modalidad VARCHAR(20) NOT NULL CHECK (modalidad IN ('GRATUITO','PAGO_UNICO','CUOTAS','MODULOS')),
+  predeterminado BOOLEAN NOT NULL DEFAULT FALSE,
+  monto_matricula NUMERIC(12,2) NOT NULL CHECK (monto_matricula >= 0),
+  precio_academico NUMERIC(12,2) NOT NULL CHECK (precio_academico >= 0),
+  creado_por UUID REFERENCES usuarios(id),
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(cohorte_id,nombre,version)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS planes_pago_un_predeterminado ON planes_pago_cohorte(cohorte_id) WHERE predeterminado;
+CREATE TABLE IF NOT EXISTS cuotas_plan_pago (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  plan_id UUID NOT NULL REFERENCES planes_pago_cohorte(id),
+  numero INTEGER NOT NULL CHECK (numero > 0),
+  concepto VARCHAR(255) NOT NULL,
+  importe NUMERIC(12,2) NOT NULL CHECK (importe > 0),
+  fecha_vencimiento DATE,
+  componente_id UUID REFERENCES componentes_curriculares(id),
+  UNIQUE(plan_id,numero)
+);
+CREATE TABLE IF NOT EXISTS planes_asignados_inscripcion (
+  inscripcion_id UUID PRIMARY KEY REFERENCES inscripciones(id),
+  plan_id UUID NOT NULL REFERENCES planes_pago_cohorte(id),
+  asignado_por UUID NOT NULL REFERENCES usuarios(id),
+  asignado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Versioned prices above are offers; this row is the student's immutable accepted agreement.
+CREATE TABLE IF NOT EXISTS acuerdos_pago_inscripcion (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  inscripcion_id UUID NOT NULL UNIQUE REFERENCES inscripciones(id),
+  plan_id UUID REFERENCES planes_pago_cohorte(id),
+  nombre_plan VARCHAR(120) NOT NULL,
+  modalidad VARCHAR(20) NOT NULL,
+  monto_matricula NUMERIC(12,2) NOT NULL CHECK (monto_matricula >= 0),
+  precio_academico NUMERIC(12,2) NOT NULL CHECK (precio_academico >= 0),
+  aceptado_por UUID REFERENCES usuarios(id),
+  aceptado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(id,inscripcion_id)
+);
+CREATE TABLE IF NOT EXISTS obligaciones_pago (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  acuerdo_id UUID NOT NULL,
+  inscripcion_id UUID NOT NULL,
+  numero INTEGER NOT NULL CHECK (numero >= 0),
+  tipo VARCHAR(15) NOT NULL CHECK (tipo IN ('MATRICULA','ACADEMICO')),
+  concepto VARCHAR(255) NOT NULL,
+  importe NUMERIC(12,2) NOT NULL CHECK (importe > 0),
+  fecha_vencimiento DATE,
+  componente_id UUID REFERENCES componentes_curriculares(id),
+  anulada_en TIMESTAMPTZ,
+  anulada_por UUID REFERENCES usuarios(id),
+  motivo_anulacion TEXT,
+  FOREIGN KEY(acuerdo_id,inscripcion_id) REFERENCES acuerdos_pago_inscripcion(id,inscripcion_id),
+  UNIQUE(acuerdo_id,numero),
+  UNIQUE(id,inscripcion_id),
+  CHECK ((anulada_en IS NULL AND anulada_por IS NULL AND motivo_anulacion IS NULL) OR
+         (anulada_en IS NOT NULL AND anulada_por IS NOT NULL AND length(trim(motivo_anulacion)) >= 5))
+);
+CREATE INDEX IF NOT EXISTS obligaciones_por_inscripcion ON obligaciones_pago(inscripcion_id,numero);
+CREATE TABLE IF NOT EXISTS auditoria_economica (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  inscripcion_id UUID REFERENCES inscripciones(id),
+  cohorte_id UUID REFERENCES cohortes_apertura(id),
+  pago_id UUID REFERENCES pagos_inscripcion(id),
+  usuario_id UUID REFERENCES usuarios(id),
+  accion VARCHAR(60) NOT NULL,
+  motivo TEXT,
+  detalle JSONB NOT NULL DEFAULT '{}'::jsonb,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auditoria_economica_inscripcion ON auditoria_economica(inscripcion_id,creado_en);
+
+-- Apply after 20261021_academic_billing.sql. No historical payments are rewritten.
+ALTER TYPE estado_pago_enum ADD VALUE IF NOT EXISTS 'ANULADO';
+ALTER TABLE pagos_inscripcion ADD COLUMN IF NOT EXISTS clave_idempotencia VARCHAR(100);
+ALTER TABLE pagos_inscripcion ADD COLUMN IF NOT EXISTS solicitud_hash CHAR(64);
+CREATE UNIQUE INDEX IF NOT EXISTS pago_reintento_unico ON pagos_inscripcion(inscripcion_id,clave_idempotencia) WHERE clave_idempotencia IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS pago_inscripcion_identidad ON pagos_inscripcion(id,inscripcion_id);
+CREATE TABLE IF NOT EXISTS aplicaciones_pago (
+  pago_id UUID NOT NULL,
+  obligacion_id UUID NOT NULL,
+  inscripcion_id UUID NOT NULL,
+  importe NUMERIC(12,2) NOT NULL CHECK(importe > 0),
+  PRIMARY KEY(pago_id,obligacion_id),
+  FOREIGN KEY(pago_id,inscripcion_id) REFERENCES pagos_inscripcion(id,inscripcion_id),
+  FOREIGN KEY(obligacion_id,inscripcion_id) REFERENCES obligaciones_pago(id,inscripcion_id)
+);
+CREATE TABLE IF NOT EXISTS comprobantes_internos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  numero BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
+  pago_id UUID NOT NULL UNIQUE REFERENCES pagos_inscripcion(id),
+  inscripcion_id UUID NOT NULL REFERENCES inscripciones(id),
+  datos JSONB NOT NULL,
+  emitido_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+  anulado_en TIMESTAMPTZ,
+  anulado_por UUID REFERENCES usuarios(id),
+  motivo_anulacion TEXT,
+  CHECK ((anulado_en IS NULL AND anulado_por IS NULL AND motivo_anulacion IS NULL) OR
+         (anulado_en IS NOT NULL AND anulado_por IS NOT NULL AND length(trim(motivo_anulacion)) >= 5))
+);
+CREATE INDEX IF NOT EXISTS comprobantes_por_inscripcion ON comprobantes_internos(inscripcion_id,emitido_en);
+
+INSERT INTO permisos(codigo,nombre,descripcion) VALUES ('PAGO_ANULAR','Anulación de cobros','Anular cobros aprobados con motivo y auditoría'),('OBLIGACION_ANULAR','Anulación de obligaciones','Anular obligaciones sin aplicaciones de pago') ON CONFLICT(codigo) DO NOTHING;
 
 -- Technical registry of existing institutional documents; no automatic issuance.
 CREATE TABLE IF NOT EXISTS certificados_registro (

@@ -1,3 +1,5 @@
+import { moneyInput, allocationsInput } from '../billing/billing.schema';
+import { cents } from '../billing/billing.money';
 import { z } from 'zod';
 import {
   EstadoInscripcion,
@@ -76,13 +78,15 @@ export const createPaymentSchema = z.object({
   metodo_pago: z.nativeEnum(MetodoPago),
   numero_referencia_o_recibo: z.string().min(1, 'El número de referencia o recibo es obligatorio').max(100),
   banco_origen: z.string().max(100).optional().nullable(),
-  monto_subtotal: numberPreprocessor(),
-  descuento_aplicado: numberPreprocessor(0),
-  total_pagado: numberPreprocessor(),
+  monto_subtotal: moneyInput,
+  descuento_aplicado: moneyInput.default('0.00'),
+  total_pagado: moneyInput.refine(value=>cents(value)>0n,'El pago debe ser mayor que cero'),
+  clave_idempotencia: z.string().trim().min(8).max(100).optional(),
+  aplicaciones: allocationsInput.optional(),
   concepto: z.string().min(1, 'El concepto es obligatorio').max(255),
   comprobante_baucher_url: z.string().optional().nullable(),
-  fecha_pago_reportada: z.string().optional(),
-});
+  fecha_pago_reportada: z.string().refine(value=>Number.isFinite(Date.parse(value)),'Fecha de pago inválida').optional(),
+}).refine(value=>cents(value.monto_subtotal)-cents(value.descuento_aplicado)===cents(value.total_pagado),{path:['total_pagado'],message:'Subtotal menos descuento debe coincidir con el pago reportado'});
 
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 

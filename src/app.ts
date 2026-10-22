@@ -1,3 +1,4 @@
+import { billingRouter } from './modules/billing/billing.routes';
 import { protectUploads } from './middlewares/private-upload.middleware';
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -82,6 +83,7 @@ app.use('/api/applicants', applicantsRouter);
 
 // Enrollments, Quorum Control, Payments and Convalidations (Fase 7)
 app.use('/api/enrollments', enrollmentRouter);
+app.use('/api/billing', billingRouter);
 
 // SNEPA Grades Import, Manual Modification & Audit Trail (Fase 8)
 app.use('/api/grades', gradesRouter);

@@ -9,9 +9,9 @@ S1. User request: “cuando estoy guardando una cohorte, quiero que exista, el p
 
 ## Tasks
 
-- T1 | S1 | inline (existing flow mapped; no writer trigger) | verified; commit pending | API atomic embedded module plan and regression tests; commit pending.
-- T2 | S1 | inline (same coherent flow; no writer trigger) | verified; commit pending | cohort pricing editor, readback and regression tests; commit pending.
-- T3 | S1 | delegated verification (financial persistence, shared contracts and transactions: risk items 1, 3, 4) | verified; final evidence commit pending | independent isolated verification and parent spot check.
+- T1 | S1 | inline (existing flow mapped; no writer trigger) | complete | API atomic embedded module plan and regression tests; commit `94be927`.
+- T2 | S1 | inline (same coherent flow; no writer trigger) | complete | cohort pricing editor, readback and regression tests; commit `e388292`; portal contract mirror `b6bfde2`.
+- T3 | S1 | delegated verification (financial persistence, shared contracts and transactions: risk items 1, 3, 4) | complete (functional verification); native review unavailable | independent isolated verification and parent spot check; evidence recorded in final logbook commit.
 
 ## Log
 
@@ -24,3 +24,5 @@ L5. Own-check executor observed API `npm test` 119/119, API build, canonical con
 L6. Native `gentle-ai review mode status`, assessment and selectorless STATUS were unavailable (exit 127, executable missing). No RDD transaction or authority was created; no mode preference was changed. Independent financial verification remains separate. Engram mirror remains pending because memory tools are unavailable. Delivery stays on the existing feature branches with no push or publishing.
 
 L7. Independent verifier used fresh `/tmp` source copies without repository metadata, environment files or real data: S1 PASS; no change-caused blocker. Observed final web suite 183/183 and build, API suite 119/119, and an independent complete isolated financial integration pass. No correction requested. Optional screenshot/browser timing probe skipped. Parent spot check reran six focused schema/public-controller regression tests successfully. Risk: items 1, 3, 4 (financial reference updates, shared form/contracts and transaction locking).
+
+L8. Local work-unit commits: API `94be927`, backoffice `e388292`, portal contract mirror `b6bfde2`. Running count across these three commits: 1,240 additions/deletions including tests, tracking, documentation and synchronized contract copies; generated consumer copies account for 14 lines. The feature remains one cohesive delivery using the selected single-pr strategy; most added lines are explicit public-HTTP and UI regression scenarios. No PR, push, deployment or database migration was performed. All implementation tasks and independent verification are complete; native review and Engram mirror remain unavailable as recorded above.

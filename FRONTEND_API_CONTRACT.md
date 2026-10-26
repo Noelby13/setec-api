@@ -313,7 +313,8 @@ Los nombres en español de esta sección son etiquetas de documentación, no nom
 | `numero_edicion` | entero >=1, default 1 |
 | `fecha_inicio_inscripcion`, `fecha_fin_inscripcion`, `fecha_inicio_clases`, `fecha_fin_clases` | fecha requerida; crear exige orden cronológico no decreciente |
 | `horario_general` | string trim max 255, opcional/nullable |
-| `precio_matricula`, `precio_total_cohorte` | número >=0, default 0 |
+| `precio_matricula`, `precio_total_cohorte` | número >=0, default 0; total académico sin matrícula |
+| `plan_pago` | opcional: DTO del plan de pagos predeterminado; objeto JSON o texto JSON en multipart. Con costo académico positivo usa `MODULOS`: cada componente real del programa una sola vez, importe positivo y `fecha_vencimiento` válida obligatoria. La suma coincide con el total académico; los precios escalares enviados deben coincidir con el plan. Cohorte y plan se guardan en una transacción; un plan idéntico no crea versión y los acuerdos aceptados se conservan. |
 | `descuento_porcentaje` | entero 0–100, default 0 |
 | `cupo_minimo`, `cupo_maximo` | entero >=1, defaults 15/30; regla adicional 15–30 sin excepción |
 | `tiene_excepcion_cupo_setec` | boolean, default false |

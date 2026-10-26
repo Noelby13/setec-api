@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { createPlanSchema } from '../billing/billing.schema';
+import { cents } from '../billing/billing.money';
 import { ModalidadEducativa, EstadoCohorte } from '../../types/enums';
 
 const modalidadEnum = z.enum([
@@ -49,7 +51,46 @@ const nullableUuidPreprocessor = () =>
 // COHORTES DE APERTURA SCHEMAS
 // ==========================================
 
+// Embedded cohort schedules have required dates; standalone legacy offers retain their contract.
+export const cohortPaymentPlanSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== "string") return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  },
+  createPlanSchema.superRefine((plan, context) => {
+    const issue = (message: string, path: (string | number)[] = []) =>
+      context.addIssue({ code: "custom", message, path });
+    if (!plan.predeterminado)
+      issue("El plan de la cohorte debe ser predeterminado");
+    if (cents(plan.precio_academico) > 0n && plan.modalidad !== "MODULOS")
+      issue("Configure el precio y fecha de pago de cada módulo");
+    if (plan.modalidad === "MODULOS") {
+      const ids = new Set<string>();
+      plan.cuotas.forEach((row, index) => {
+        if (!row.fecha_vencimiento)
+          issue("Indique la fecha de pago del módulo", [
+            "cuotas",
+            index,
+            "fecha_vencimiento",
+          ]);
+        if (row.componente_id && ids.has(row.componente_id))
+          issue("El módulo ya tiene un cobro", [
+            "cuotas",
+            index,
+            "componente_id",
+          ]);
+        if (row.componente_id) ids.add(row.componente_id);
+      });
+    }
+  }),
+);
+
 export const createCohorteSchema = z.object({
+  plan_pago: cohortPaymentPlanSchema.optional(),
   programa_id: z.string().uuid('Formato de programa_id inválido (UUID requerido)'),
   sede_id: z.string().uuid('Formato de sede_id inválido (UUID requerido)'),
   modalidad: modalidadEnum,

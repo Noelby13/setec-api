@@ -855,7 +855,11 @@ export interface AssignTagsRequest { tag_ids: UUID[] }
 export interface CatalogQuery { area_id?: UUID; categoria?: CategoriaPrograma; subtipo?: SubtipoPrograma; search?: string }
 /** Esta ruta no aplica catalogQuerySchema: filtros no validados, se muestran dominios útiles para UI. */
 export interface ListProgramsQuery extends CatalogQuery { estado_vigencia?: EstadoVigenciaPrograma; visible_en_web?: string }
+/** Integrated cohort schedules require dated, unique curriculum-module charges. */
+export type CohortPaymentPlanRequest = BillingPlanRequest & { predeterminado: true };
 export interface CreateCohorteRequest {
+  /** JSON object, or JSON text in multipart. Academic totals exclude enrollment. */
+  plan_pago?: CohortPaymentPlanRequest | string;
   programa_id: UUID; sede_id: UUID; modalidad: ModalidadEducativa; codigo_cohorte: string;
   /** Default 1. */ numero_edicion?: NumericInput;
   coordinador_id: UUID;

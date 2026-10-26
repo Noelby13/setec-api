@@ -78,77 +78,134 @@ export class BillingService {
     actor: string,
   ) {
     const data = createPlanSchema.parse(raw);
-    return withTransaction(async (db) => {
-      const cohort = await EnrollmentDao.getCohorteWithProgramForUpdate(
-        cohortId,
-        db,
-      );
-      if (!cohort) throw new AppError("Cohorte no encontrada", 404);
-      if (
-        ["CANCELADA", "FINALIZADA_PENDIENTE_EVAL", "EVALUADA_SETEC"].includes(
-          cohort.estado_cohorte,
-        )
+    return withTransaction((db) => this.publishPlan(cohortId, data, actor, db));
+  }
+
+  /** Caller owns the cohort transaction; standalone plan publication uses the same locking order. */
+  static async publishPlan(
+    cohortId: string,
+    data: CreatePlanInput,
+    actor: string,
+    db: DbClient,
+  ) {
+    const cohort = await EnrollmentDao.getCohorteWithProgramForUpdate(
+      cohortId,
+      db,
+    );
+    if (!cohort) throw new AppError("Cohorte no encontrada", 404);
+    if (
+      ["CANCELADA", "FINALIZADA_PENDIENTE_EVAL", "EVALUADA_SETEC"].includes(
+        cohort.estado_cohorte,
       )
-        throw new AppError("La cohorte no admite nuevos planes", 409);
-      for (const row of data.cuotas) {
-        if (row.componente_id) {
-          const component = await db.query(
-            "SELECT id FROM componentes_curriculares WHERE id=$1 AND programa_id=$2",
-            [row.componente_id, cohort.programa_id],
-          );
-          if (!component.rows.length)
-            throw new AppError(
-              "El módulo debe pertenecer al programa académico de esta cohorte",
-              400,
-            );
-        }
-      }
-      const version = await db.query(
-        `SELECT COALESCE(MAX(version),0)+1 AS next FROM planes_pago_cohorte WHERE cohorte_id=$1 AND nombre=$2`,
-        [cohortId, data.nombre],
-      );
-      if (data.predeterminado)
-        await db.query(
-          "UPDATE planes_pago_cohorte SET predeterminado=false WHERE cohorte_id=$1 AND predeterminado",
-          [cohortId],
+    )
+      throw new AppError("La cohorte no admite nuevos planes", 409);
+    for (const row of data.cuotas) {
+      if (row.componente_id) {
+        const component = await db.query(
+          "SELECT id FROM componentes_curriculares WHERE id=$1 AND programa_id=$2",
+          [row.componente_id, cohort.programa_id],
         );
-      const inserted = await db.query(
-        `INSERT INTO planes_pago_cohorte(cohorte_id,nombre,version,modalidad,predeterminado,monto_matricula,precio_academico,creado_por) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        if (!component.rows.length)
+          throw new AppError(
+            "El módulo debe pertenecer al programa académico de esta cohorte",
+            400,
+          );
+      }
+    }
+    const version = await db.query(
+      `SELECT COALESCE(MAX(version),0)+1 AS next FROM planes_pago_cohorte WHERE cohorte_id=$1 AND nombre=$2`,
+      [cohortId, data.nombre],
+    );
+    if (data.predeterminado)
+      await db.query(
+        "UPDATE planes_pago_cohorte SET predeterminado=false WHERE cohorte_id=$1 AND predeterminado",
+        [cohortId],
+      );
+    const inserted = await db.query(
+      `INSERT INTO planes_pago_cohorte(cohorte_id,nombre,version,modalidad,predeterminado,monto_matricula,precio_academico,creado_por) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [
+        cohortId,
+        data.nombre,
+        version.rows[0].next,
+        data.modalidad,
+        data.predeterminado,
+        data.monto_matricula,
+        data.precio_academico,
+        actor,
+      ],
+    );
+    const plan = inserted.rows[0];
+    for (const [index, row] of data.cuotas.entries())
+      await db.query(
+        `INSERT INTO cuotas_plan_pago(plan_id,numero,concepto,importe,fecha_vencimiento,componente_id) VALUES($1,$2,$3,$4,$5,$6)`,
         [
-          cohortId,
-          data.nombre,
-          version.rows[0].next,
-          data.modalidad,
-          data.predeterminado,
-          data.monto_matricula,
-          data.precio_academico,
-          actor,
+          plan.id,
+          index + 1,
+          row.concepto,
+          row.importe,
+          row.fecha_vencimiento || null,
+          row.componente_id || null,
         ],
       );
-      const plan = inserted.rows[0];
-      for (const [index, row] of data.cuotas.entries())
-        await db.query(
-          `INSERT INTO cuotas_plan_pago(plan_id,numero,concepto,importe,fecha_vencimiento,componente_id) VALUES($1,$2,$3,$4,$5,$6)`,
-          [
-            plan.id,
-            index + 1,
-            row.concepto,
-            row.importe,
-            row.fecha_vencimiento || null,
-            row.componente_id || null,
-          ],
-        );
-      if (data.predeterminado)
-        await db.query(
-          "UPDATE cohortes_apertura SET precio_matricula=$2,precio_total_cohorte=$3 WHERE id=$1",
-          [cohortId, data.monto_matricula, data.precio_academico],
-        );
-      await this.audit(db, "PLAN_PUBLICADO", actor, null, cohortId, {
-        plan_id: plan.id,
-        version: plan.version,
-      });
-      return { ...plan, cuotas: data.cuotas };
+    if (data.predeterminado)
+      await db.query(
+        "UPDATE cohortes_apertura SET precio_matricula=$2,precio_total_cohorte=$3 WHERE id=$1",
+        [cohortId, data.monto_matricula, data.precio_academico],
+      );
+    await this.audit(db, "PLAN_PUBLICADO", actor, null, cohortId, {
+      plan_id: plan.id,
+      version: plan.version,
     });
+    return { ...plan, cuotas: data.cuotas };
+  }
+
+  /** Publish only changed cohort schedules; accepted student agreements are never rewritten. */
+  static async saveCohortPlan(
+    cohortId: string,
+    data: CreatePlanInput,
+    actor: string,
+    db: DbClient,
+  ) {
+    const cohort = await EnrollmentDao.getCohorteWithProgramForUpdate(
+      cohortId,
+      db,
+    );
+    if (!cohort) throw new AppError("Cohorte no encontrada", 404);
+    if (data.modalidad === "MODULOS") {
+      const components = await db.query(
+        "SELECT id FROM componentes_curriculares WHERE programa_id=$1",
+        [cohort.programa_id],
+      );
+      const ids = new Set(data.cuotas.map((row) => row.componente_id));
+      if (
+        !components.rows.length ||
+        ids.size !== data.cuotas.length ||
+        ids.size !== components.rows.length ||
+        components.rows.some((row) => !ids.has(row.id))
+      )
+        throw new AppError(
+          "Configure un precio y fecha de pago para cada módulo del programa",
+          400,
+        );
+    }
+    const previous = (await this.getPlans(cohortId, db)).find(
+      (plan) => plan.predeterminado,
+    );
+    const identity = (plan: any) =>
+      JSON.stringify({
+        nombre: plan.nombre,
+        modalidad: plan.modalidad,
+        monto_matricula: decimal(cents(plan.monto_matricula)),
+        precio_academico: decimal(cents(plan.precio_academico)),
+        cuotas: plan.cuotas.map((row: any) => ({
+          concepto: row.concepto,
+          importe: decimal(cents(row.importe)),
+          fecha_vencimiento: row.fecha_vencimiento || null,
+          componente_id: row.componente_id || null,
+        })),
+      });
+    if (previous && identity(previous) === identity(data)) return previous;
+    return this.publishPlan(cohortId, data, actor, db);
   }
 
   static async assignPlan(id: string, planId: string, actor: string) {

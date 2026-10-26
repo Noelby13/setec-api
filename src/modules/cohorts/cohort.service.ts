@@ -11,6 +11,7 @@ import {
   CohorteFilter,
 } from './cohort.dao';
 import {
+  cohortPaymentPlanSchema,
   CreateCohorteInput,
   UpdateCohorteInput,
   ProgramarComponenteInput,
@@ -18,6 +19,7 @@ import {
 } from './cohort.schema';
 import { AppError } from '../../middlewares/error.middleware';
 import { pool, withTransaction } from '../../db/pool';
+import { BillingService } from '../billing/billing.service';
 import { cents } from '../billing/billing.money';
 import { ModalidadEducativa } from '../../types/enums';
 
@@ -33,7 +35,8 @@ export class CohortService {
    */
   static async createCohorte(
     input: CreateCohorteInput,
-    excepcionCupoFileUrl?: string
+    excepcionCupoFileUrl?: string,
+    actor?: string
   ): Promise<CohorteRecord> {
     const finalExcepcionUrl = excepcionCupoFileUrl || input.excepcion_cupo_setec_url;
 
@@ -147,14 +150,45 @@ export class CohortService {
       );
     }
 
+    const { plan_pago: _plan, ...cohortInput } = input;
     const data: CreateCohorteData = {
-      ...input,
+      ...cohortInput,
       cupo_minimo: cupoMin,
       cupo_maximo: cupoMax,
       excepcion_cupo_setec_url: finalExcepcionUrl || null,
     };
 
-    return CohortDao.createCohorte(data);
+    if (!input.plan_pago) return CohortDao.createCohorte(data);
+    const plan = this.paymentPlan(input, actor);
+    return withTransaction(async db => {
+      const cohort = await CohortDao.createCohorte(data, db);
+      await BillingService.saveCohortPlan(cohort.id, plan!, actor!, db);
+      return cohort;
+    });
+  }
+
+  private static paymentPlan(
+    input: CreateCohorteInput | UpdateCohorteInput,
+    actor?: string,
+  ) {
+    if (!input.plan_pago) return undefined;
+    if (!actor)
+      throw new AppError(
+        "Se requiere un usuario para publicar el plan de pagos",
+        401,
+      );
+    const plan = cohortPaymentPlanSchema.parse(input.plan_pago);
+    if (
+      (input.precio_matricula !== undefined &&
+        cents(input.precio_matricula) !== cents(plan.monto_matricula)) ||
+      (input.precio_total_cohorte !== undefined &&
+        cents(input.precio_total_cohorte) !== cents(plan.precio_academico))
+    )
+      throw new AppError(
+        "Los precios de la cohorte deben coincidir con el plan de pagos",
+        400,
+      );
+    return plan;
   }
 
   /**
@@ -181,8 +215,10 @@ export class CohortService {
   static async updateCohorte(
     id: string,
     input: UpdateCohorteInput,
-    excepcionCupoFileUrl?: string
+    excepcionCupoFileUrl?: string,
+    actor?: string
   ): Promise<CohorteRecord> {
+    const paymentPlan = this.paymentPlan(input, actor);
     return withTransaction(async db => {
     await db.query('SELECT id FROM cohortes_apertura WHERE id=$1 FOR UPDATE', [id]);
     const current = await CohortDao.findCohorteById(id, db);
@@ -192,7 +228,7 @@ export class CohortService {
 
     const changesPrice = (input.precio_matricula !== undefined && cents(input.precio_matricula) !== cents(current.precio_matricula)) ||
       (input.precio_total_cohorte !== undefined && cents(input.precio_total_cohorte) !== cents(current.precio_total_cohorte));
-    if (changesPrice) {
+    if (changesPrice && !paymentPlan) {
       const plan = await db.query('SELECT id FROM planes_pago_cohorte WHERE cohorte_id=$1 AND predeterminado', [id]);
       if (plan.rows.length) throw new AppError('Cambie los importes publicando una nueva versión en Plan de pagos; los acuerdos existentes se conservan', 409);
     }
@@ -260,8 +296,10 @@ export class CohortService {
       }
     }
 
+    const { plan_pago: _plan, ...cohortInput } = input;
     const data: UpdateCohorteData = {
-      ...input,
+      ...cohortInput,
+      ...(paymentPlan ? { precio_matricula: Number(paymentPlan.monto_matricula), precio_total_cohorte: Number(paymentPlan.precio_academico) } : {}),
       ...(excepcionCupoFileUrl ? { excepcion_cupo_setec_url: excepcionCupoFileUrl } : {}),
     };
 
@@ -269,6 +307,7 @@ export class CohortService {
     if (!updated) {
       throw new AppError('Error al actualizar la cohorte', 500);
     }
+    if (paymentPlan) await BillingService.saveCohortPlan(id, paymentPlan, actor!, db);
     return updated;
     });
   }

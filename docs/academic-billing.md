@@ -4,7 +4,7 @@ The academic account is scoped to one enrollment and cohort. It distinguishes th
 
 ## Configuration and eligibility
 
-An administrator opens **Cohorts → Payment plans**, defines the enrollment fee separately from academic cost and publishes a versioned offer. Supported modes are free, single payment, scheduled installments and charges linked to real curriculum components. Installment amounts must equal academic cost exactly; the enrollment fee is additional. Dates are optional. No interest, penalties, implicit discounts or electronic payment processors are introduced.
+An administrator opens **Cohorts → Payment plans**, defines the enrollment fee separately from academic cost and publishes a versioned offer. Supported modes are free, single payment, scheduled installments and charges linked to real curriculum components. Installment amounts must equal academic cost exactly; the enrollment fee is additional. Dates remain optional in the standalone plan editor; the integrated cohort module schedule requires a valid payment date for every module. No interest, penalties, implicit discounts or electronic payment processors are introduced.
 
 Multiple offers may coexist; one can be the cohort default. Admissions may assign an alternative before documentary approval. Existing documentary approval and cohort quorum determine collection eligibility. At that boundary the selected/default plan becomes an immutable accepted agreement with obligations, once only. A later offer or price change never silently reprices an existing accepted agreement. A free agreement generates no charges.
 
@@ -43,3 +43,9 @@ No configured database was migrated by this implementation. Review these additiv
 Use the project's normal reviewed migration process. Do not replay the full schema or seed over an existing database. Assign exceptional cancellation permissions only through the institution's authorized role process.
 
 `npm test`, `npm run build` and `npm run contracts:check` cover deterministic API behavior and canonical consumer copies. `npm run test:billing:integration` uses a unique disposable PostgreSQL container, scratch uploads and synthetic users; it never uses project `.env` or a configured database. `npm run test:enrollments:integration` and `npm run test:connected` exercise preserved academic behavior and local browser journeys. Run outputs, including failures and unavailable checks, are recorded in `odd/tasks/academic-billing-ux.md`; this guide does not assert a check passed merely because a command exists.
+
+## Integrated cohort pricing
+
+`POST /api/cohorts` and `PUT /api/cohorts/:id` accept optional `plan_pago` using the existing plan shape. Multipart requests send that field as JSON text. An embedded offer must be the default; a positive academic price uses `MODULOS`, includes every real curriculum component exactly once, and requires every payment date. Zero academic cost supports free or enrollment-only offers. Scalar prices, when supplied, must match the plan exactly.
+
+The cohort and offer share one database transaction and the authenticated actor is recorded in the publication audit. A failed module or amount validation rolls back all cohort changes. An identical default offer is reused; changed offers create immutable versions. The existing standalone publication endpoint and legacy scalar-only cohort clients retain their behavior. Previously accepted agreements and student obligations are never repriced by editing a cohort. No database migration is required beyond the existing academic billing migrations.

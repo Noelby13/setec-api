@@ -349,31 +349,97 @@ async function main() {
     );
     const beforeDiscovery = await snapshot();
     assert.equal((await request("/api/billing/students")).status, 401);
-    await rejected("/api/billing/students", "GET", undefined, 403, tokens.student);
-    for (const query of ["page=0", "limit=51", "page=1.5", `search=${"x".repeat(121)}`]) {
-      await rejected(`/api/billing/students?${query}`, "GET", undefined, 400, tokens.revoker);
+    await rejected(
+      "/api/billing/students",
+      "GET",
+      undefined,
+      403,
+      tokens.student,
+    );
+    for (const query of [
+      "page=0",
+      "limit=51",
+      "page=1.5",
+      `search=${"x".repeat(121)}`,
+    ]) {
+      await rejected(
+        `/api/billing/students?${query}`,
+        "GET",
+        undefined,
+        400,
+        tokens.revoker,
+      );
     }
-    for (const search of [" student Prueba ", "BILL-student", e.codigo_expediente]) {
-      const found = await request(`/api/billing/students?search=${encodeURIComponent(search)}`, "GET", undefined, tokens.revoker);
+    for (const search of [
+      " student Prueba ",
+      "BILL-student",
+      e.codigo_expediente,
+    ]) {
+      const found = await request(
+        `/api/billing/students?search=${encodeURIComponent(search)}`,
+        "GET",
+        undefined,
+        tokens.revoker,
+      );
       assert.equal(found.status, 200, JSON.stringify(found.body));
-      assert.deepEqual(found.body.pagination, { total: 1, page: 1, limit: 10, totalPages: 1 });
-      assert.deepEqual(found.body.data, [{ id: applicants.student.id, nombres: "student", apellidos: "Prueba", tipo_identificacion: "PASAPORTE", identificacion_terminacion: "dent" }]);
+      assert.deepEqual(found.body.pagination, {
+        total: 1,
+        page: 1,
+        limit: 10,
+        totalPages: 1,
+      });
+      assert.deepEqual(found.body.data, [
+        {
+          id: applicants.student.id,
+          nombres: "student",
+          apellidos: "Prueba",
+          tipo_identificacion: "PASAPORTE",
+          identificacion_terminacion: "dent",
+        },
+      ]);
     }
     const pages = [];
     for (const page of [1, 2, 3]) {
-      const found = await request(`/api/billing/students?search=Prueba&page=${page}&limit=1`, "GET", undefined, tokens.issuer);
+      const found = await request(
+        `/api/billing/students?search=Prueba&page=${page}&limit=1`,
+        "GET",
+        undefined,
+        tokens.issuer,
+      );
       assert.equal(found.status, 200, JSON.stringify(found.body));
-      assert.deepEqual(found.body.pagination, { total: 2, page, limit: 1, totalPages: 2 });
+      assert.deepEqual(found.body.pagination, {
+        total: 2,
+        page,
+        limit: 1,
+        totalPages: 2,
+      });
       pages.push(...found.body.data);
     }
-    assert.deepEqual(pages.map(person => person.id), [applicants.other.id, applicants.student.id]);
-    assert.deepEqual(pages.map(person => person.identificacion_terminacion), ["ther", "dent"]);
-    const excluded = await request("/api/billing/students?search=Unlinked", "GET", undefined, tokens.revoker);
+    assert.deepEqual(
+      pages.map((person) => person.id),
+      [applicants.other.id, applicants.student.id],
+    );
+    assert.deepEqual(
+      pages.map((person) => person.identificacion_terminacion),
+      ["ther", "dent"],
+    );
+    const excluded = await request(
+      "/api/billing/students?search=Unlinked",
+      "GET",
+      undefined,
+      tokens.revoker,
+    );
     assert.equal(excluded.status, 200);
     assert.deepEqual(excluded.body.data, []);
     assert.equal(excluded.body.pagination.total, 0);
-    assert.equal(await snapshot(), beforeDiscovery, "student discovery changed persisted financial data");
-    checks.push("real student-first discovery enforces authentication and permissions, literal name/identifier/expediente search, last-four-only identity, pagination, enrollment-only results and no duplicates across cohorts");
+    assert.equal(
+      await snapshot(),
+      beforeDiscovery,
+      "student discovery changed persisted financial data",
+    );
+    checks.push(
+      "real student-first discovery enforces authentication and permissions, literal name/identifier/expediente search, last-four-only identity, pagination, enrollment-only results and no duplicates across cohorts",
+    );
     integrationStage = "cohort price plan and quorum";
     const plan = {
       nombre: "Tres cuotas",
@@ -1003,6 +1069,221 @@ async function main() {
     assert.equal(await snapshot(), beforeAttachmentRetry);
     checks.push(
       "independent probes: real/foreign module ownership, duplicate applications rejected without writes, cohort reference price drift blocked and ordinary schedule preserved, idempotent activation date/data, rejected voucher reservation release, identical attachment retry and changed attachment conflict",
+    );
+
+    integrationStage = "integrated cohort module pricing";
+    const embedded = {
+      ...modulePlan,
+      predeterminado: true,
+      precio_academico: "100.01",
+      cuotas: [
+        {
+          concepto: "Módulo propio",
+          importe: "100.01",
+          componente_id: moduleOwn.id,
+          fecha_vencimiento: "2027-01-15",
+        },
+      ],
+    };
+    const cohortBody = {
+      programa_id: program.id,
+      sede_id: campus.id,
+      coordinador_id: staff.id,
+      modalidad: "PRESENCIAL",
+      codigo_cohorte: `INTEGRATED-${++fixtureNumber}`,
+      numero_edicion: 1,
+      fecha_inicio_inscripcion: "2026-10-01",
+      fecha_fin_inscripcion: "2026-10-15",
+      fecha_inicio_clases: "2026-11-01",
+      fecha_fin_clases: "2027-06-01",
+      precio_matricula: "0.00",
+      precio_total_cohorte: "100.01",
+      cupo_minimo: 15,
+      cupo_maximo: 30,
+      plan_pago: embedded,
+    };
+    await rejected(
+      "/api/cohorts",
+      "POST",
+      {
+        ...cohortBody,
+        plan_pago: {
+          ...embedded,
+          cuotas: [{ ...embedded.cuotas[0], componente_id: moduleForeign.id }],
+        },
+      },
+      400,
+    );
+    response = await request("/api/cohorts", "POST", cohortBody, tokens.issuer);
+    assert.equal(response.status, 201, JSON.stringify(response.body));
+    const integrated = response.body.data;
+    const integratedPath = `/api/cohorts/${integrated.id}`;
+    const integratedPlansPath = `/api/billing/cohorts/${integrated.id}/plans`;
+    response = await request(
+      integratedPlansPath,
+      "GET",
+      undefined,
+      tokens.issuer,
+    );
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.data.length, 1);
+    assert.equal(response.body.data[0].monto_matricula, "0.00");
+    assert.equal(
+      response.body.data[0].cuotas[0].fecha_vencimiento,
+      "2027-01-15",
+    );
+    const originalPlanId = response.body.data[0].id;
+    response = await request(
+      integratedPath,
+      "PUT",
+      { horario_general: "Saturday", plan_pago: embedded },
+      tokens.issuer,
+    );
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(
+      (await request(integratedPlansPath, "GET", undefined, tokens.issuer)).body
+        .data.length,
+      1,
+    );
+    const integratedEnrollment = await enrollment(
+      integrated,
+      "student",
+      "PENDIENTE_PAGO",
+      true,
+    );
+    await q("UPDATE cohortes_apertura SET cobro_habilitado=true WHERE id=$1", [
+      integrated.id,
+    ]);
+    response = await request(
+      bill(integratedEnrollment, "accept"),
+      "POST",
+      {},
+      tokens.issuer,
+    );
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    const studentBefore = await account(integratedEnrollment);
+    assert.equal(studentBefore.acuerdo.plan_id, originalPlanId);
+    assert.equal(studentBefore.resumen.total_comprometido, "100.01");
+    assert.equal(studentBefore.obligaciones[0].importe, "100.01");
+    assert.equal(
+      studentBefore.obligaciones[0].fecha_vencimiento.slice(0, 10),
+      "2027-01-15",
+    );
+    const changed = {
+      ...embedded,
+      monto_matricula: "25.00",
+      precio_academico: "150.01",
+      cuotas: [
+        {
+          ...embedded.cuotas[0],
+          importe: "150.01",
+          fecha_vencimiento: "2027-02-15",
+        },
+      ],
+    };
+    await rejected(
+      integratedPath,
+      "PUT",
+      {
+        horario_general: "Rejected change",
+        precio_matricula: "25.00",
+        precio_total_cohorte: "150.01",
+        plan_pago: {
+          ...changed,
+          cuotas: [{ ...changed.cuotas[0], componente_id: moduleForeign.id }],
+        },
+      },
+      400,
+    );
+    await rejected(
+      integratedPath,
+      "PUT",
+      { precio_total_cohorte: "999.00", plan_pago: changed },
+      400,
+    );
+    await rejected(
+      integratedPath,
+      "PUT",
+      {
+        plan_pago: {
+          ...changed,
+          cuotas: [{ ...changed.cuotas[0], fecha_vencimiento: null }],
+        },
+      },
+      400,
+    );
+    response = await request(
+      integratedPath,
+      "PUT",
+      {
+        precio_matricula: "25.00",
+        precio_total_cohorte: "150.01",
+        plan_pago: changed,
+      },
+      tokens.issuer,
+    );
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.deepEqual(await account(integratedEnrollment), studentBefore);
+    assert.equal(
+      (await request(integratedPlansPath, "GET", undefined, tokens.issuer)).body
+        .data.length,
+      2,
+    );
+    const paidEnrollment = await enrollment(
+      integrated,
+      "other",
+      "PENDIENTE_PAGO",
+      true,
+    );
+    response = await request(
+      bill(paidEnrollment, "accept"),
+      "POST",
+      {},
+      tokens.issuer,
+    );
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    const paidAccount = await account(paidEnrollment, tokens.other);
+    assert.equal(paidAccount.resumen.total_comprometido, "175.01");
+    assert.equal(paidAccount.obligaciones.length, 2);
+    const freeBody = {
+      ...cohortBody,
+      codigo_cohorte: `FREE-${++fixtureNumber}`,
+      precio_total_cohorte: "0.00",
+      plan_pago: {
+        ...embedded,
+        modalidad: "GRATUITO",
+        precio_academico: "0.00",
+        cuotas: [],
+      },
+    };
+    const freeBoundary = "CohortPricingMultipart";
+    const freePayload =
+      Object.entries(freeBody)
+        .map(
+          ([key, value]) =>
+            `--${freeBoundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${typeof value === "object" ? JSON.stringify(value) : value}\r\n`,
+        )
+        .join("") + `--${freeBoundary}--\r\n`;
+    response = await request("/api/cohorts", "POST", undefined, tokens.issuer, {
+      boundary: freeBoundary,
+      payload: freePayload,
+    });
+    assert.equal(response.status, 201, JSON.stringify(response.body));
+    const freeIntegrated = response.body.data;
+    assert.equal(freeIntegrated.precio_total_cohorte, "0.00");
+    assert.equal(
+      (
+        await request(
+          `/api/billing/cohorts/${freeIntegrated.id}/plans`,
+          "GET",
+          undefined,
+          tokens.issuer,
+        )
+      ).body.data[0].modalidad,
+      "GRATUITO",
+    );
+    checks.push(
+      "integrated cohort creation and update save dated real module prices atomically; invalid requests preserve the entire financial data hash; unchanged schedules do not create versions; accepted student accounts remain identical; new students see new enrollment/module prices; free plans work through multipart",
     );
 
     console.log(JSON.stringify({ complete: true, checks }, null, 2));

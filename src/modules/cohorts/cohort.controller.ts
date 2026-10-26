@@ -70,7 +70,7 @@ export class CohortController {
         excepcionCupoUrl = getRelativeUploadPath(req.file);
       }
 
-      const cohort = await CohortService.createCohorte(body, excepcionCupoUrl);
+      const cohort = await CohortService.createCohorte(body, excepcionCupoUrl, req.user?.id);
 
       res.status(201).json({
         success: true,
@@ -96,7 +96,7 @@ export class CohortController {
         excepcionCupoUrl = getRelativeUploadPath(req.file);
       }
 
-      const cohort = await CohortService.updateCohorte(id, body, excepcionCupoUrl);
+      const cohort = await CohortService.updateCohorte(id, body, excepcionCupoUrl, req.user?.id);
 
       res.status(200).json({
         success: true,

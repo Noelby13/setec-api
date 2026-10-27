@@ -190,7 +190,7 @@ export async function runSeed(): Promise<void> {
       throw new Error('SUPER_ADMIN role ID not found in database');
     }
 
-    const adminEmail = 'admin@setec.edu.ni';
+    const adminEmail = 'admin@edu.ni';
     const adminUsername = 'admin';
     const adminPasswordPlain = 'Admin123*';
     const passwordHash = await bcrypt.hash(adminPasswordPlain, 10);

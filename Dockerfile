@@ -2,6 +2,10 @@ FROM node:22-bookworm-slim AS build
 
 WORKDIR /app
 
+# Forzar entorno de desarrollo en la etapa de build para que npm ci 
+# instale las devDependencies necesarias para los tests y la compilación (tsx, typescript, etc.)
+ENV NODE_ENV=development
+
 COPY package*.json ./
 RUN npm ci
 

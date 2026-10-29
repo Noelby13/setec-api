@@ -1,0 +1,58 @@
+{
+  "feature": "aula-virtual",
+  "verified_at": "2026-10-29",
+  "status": "passed_with_deployment_validation_pending",
+  "api": {
+    "baseline": "a353a867f6e317cfdecdada103c6e2a995ed7a54",
+    "candidate": "7aa7418f86b8166eba1e9902088ab48215e7dbdc",
+    "tests": 138,
+    "build": "passed",
+    "focused_tests": 5,
+    "postgres_integration": "passed in disposable PostgreSQL16; cached local container image"
+  },
+  "admin": {
+    "baseline": "84ebcadd18c2ee7ac4d5db81e26985be8e1c95bf",
+    "candidate": "81a942d433c953c3f3de775a1a5eadb3b01f2bca",
+    "tests": 195,
+    "build": "passed",
+    "browser_tests": {
+      "desktop": "passed",
+      "mobile": "passed",
+      "server": "fresh isolated loopback Vite server"
+    }
+  },
+  "independent": {
+    "specs": {
+      "S1": "PASS within tested contract",
+      "S2": "PASS within tested contract",
+      "S3": "PASS within tested contract",
+      "S4": "PASS within tested contract",
+      "S5": "PASS within tested contract",
+      "S6": "PASS within tested contract"
+    },
+    "corrected_blockers": {
+      "B1": "valid course PUT returns200",
+      "B2": "numeric CSV usernames retain leading zeros",
+      "B3": "first grade on existing null row preserves flags and writes valid audit",
+      "B4": "actual interleaving observed, confirmation409, full relevant DB hash unchanged",
+      "B5": "global legacy ownership validated on preview/save/export; own code accepted"
+    },
+    "existing_snepa_regression": {
+      "baseline": 14,
+      "candidate": 14
+    },
+    "native_receipt": "unavailable: gentle-ai executable not installed"
+  },
+  "pending": [
+    "Apply migration to the explicitly selected real installation",
+    "Validate a small course/user/final-grade exchange with Moodle administrator",
+    "Engram mirror unavailable"
+  ],
+  "risk_items": [
+    1,
+    2,
+    4
+  ],
+  "remote_operations": false,
+  "production_database_mutated": false
+}

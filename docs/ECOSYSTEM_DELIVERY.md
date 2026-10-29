@@ -154,9 +154,22 @@ Local delivery was closed on 2026-10-21 following the user's explicit instructio
 
 Local commits are preserved in all three repositories. No push, deployment, real charge or configured-database migration was performed.
 
-
 ## Academic billing and administrative UX update (2026-10-21)
 
 The [academic billing guide](academic-billing.md) describes versioned plans, exact immutable obligations, partial collection, protected internal receipts, and the two new additive billing migrations. Enrollment activation now requires an explicit administrator decision, including free cohorts; payment approval does not activate it. This intentional rule supersedes older payment-activation descriptions. No configured database was migrated.
 
 Current feature proof is retained in [academic billing evidence](verification/academic-billing-evidence.json) and `odd/tasks/academic-billing-ux.md`: API 115, backoffice 178 and portal 59 deterministic tests; all builds and canonical contracts; 34 desktop/mobile fixture cases; 7 billing and 4 enrollment PostgreSQL groups; 9 actual connected browser steps. The connected run uses real HTTP and isolated PostgreSQL; its finished-history status is an explicit synthetic academic fixture, not an automatic graduation decision. Four independent UI findings were corrected in one batch and rechecked 12/12; parent repeated the protected receipt browser probe. Native gentle-ai review and Engram mirroring remain unavailable and are not represented as approvals.
+
+## Individual grades and student search (2026-10-29)
+
+Local implementation is complete on `feat/individual-grades`. In backoffice **Notas**, select a cohort and scheduled component, search by student name, expediente or identification, and combine result/SNEPA filters. The roster includes students without grades. **Registrar nota** creates one initial grade; **Corregir nota** retains the existing audited update. Zero is a recorded grade and **Sin nota** is pending. Mobile filters remain compact and tables scroll within their own region.
+
+The additive GET `/api/grades/component/:programacionComponenteId/students` keeps the existing `NOTA_IMPORTAR` and teacher-assignment requirements. POST `/api/grades/component/:programacionComponenteId/students/:inscripcionId` requires `NOTA_MODIFICAR`, a grade from 0 to 100 and an audit justification. The API checks cohort membership, assignment and closed schedules. Existing records cannot be overwritten by first-time entry: conflicts return 409. Existing PATCH also serializes schedule/grade updates and rejects closed schedules. No schema migration is needed.
+
+Final independent checks passed in fresh scratch copies: API **133/133**, backoffice **186/186**, retained desktop/mobile browser regression **2/2**, both builds, scoped formatting and all three canonical contract copies. Browser regression uses a mocked API; PostgreSQL proof is separate and uses the actual grade service and DAO.
+
+The retained command `npm run test:grades:integration` passed **8 real PostgreSQL groups**: pending roster without writes; zero-grade initial audit; duplicate/cohort/missing-record/teacher rejection with unchanged data hashes; corrected SNEPA and audit values; creation/correction rollback on real audit-trigger failure; simultaneous first-entry conflict; serialized corrections with an unbroken audit chain; and closure blocking a waiting creation plus later correction. The runner uses only the cached `postgres:16-alpine` image through the explicit local Docker socket, a new random database/container and scratch directory, and a loopback ephemeral port. It never reads project `.env`, downloads images, or accesses existing databases. Its own container and scratch directory are removed before success is reported.
+
+Retained evidence: [individual-grades-evidence.json](verification/individual-grades-evidence.json). Reproduce the PostgreSQL check with `npm run test:grades:integration`. Feature specification and commits are tracked in `../setecweb/odd/tasks/individual-grades.md`; user operations are described in `../setecweb/docs/academic-operations.md`. Original implementation commits: API `ae1cb46`, backoffice `4d3f38f`, portal contract mirror `dab9d77`; closure commits follow in each relevant local history. No push, pull request or deployment was performed.
+
+The earlier PostgreSQL verification gap is closed. Native gentle-ai review and Engram mirroring remain unavailable auxiliary tools; their absence is not represented as approval or successful mirroring. No functional acceptance check remains pending.

@@ -1,0 +1,95 @@
+{
+  "feature": "individual-grades",
+  "verified_on": "2026-10-29",
+  "status": "passed",
+  "scope": "Local feature closure; no deployment or existing-database mutation",
+  "source_commits": {
+    "api": "ae1cb46",
+    "web": "4d3f38f",
+    "portal_contracts": "dab9d77"
+  },
+  "checks": [
+    {
+      "project": "POSGRADOSETECAPI",
+      "command": "npm test",
+      "passed": 133,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "project": "POSGRADOSETECAPI",
+      "command": "npm run build",
+      "status": "passed"
+    },
+    {
+      "project": "POSGRADOSETECAPI",
+      "command": "npm run contracts:check",
+      "status": "passed",
+      "copies": 3
+    },
+    {
+      "project": "setecweb",
+      "command": "npm test",
+      "passed": 186,
+      "failed": 0
+    },
+    {
+      "project": "setecweb",
+      "command": "npm run build",
+      "status": "passed"
+    },
+    {
+      "project": "setecweb",
+      "command": "npm run test:e2e -- e2e/grades.spec.js",
+      "passed": 2,
+      "failed": 0,
+      "mode": "mocked API; desktop and mobile"
+    },
+    {
+      "project": "setecweb",
+      "command": "scoped prettier --check",
+      "status": "passed"
+    }
+  ],
+  "postgres": {
+    "command": "npm run test:grades:integration",
+    "image": "postgres:16-alpine",
+    "network": "loopback-only ephemeral port",
+    "existing_databases_accessed": false,
+    "image_pulled": false,
+    "result": {
+      "complete": true,
+      "database": "disposable PostgreSQL 16",
+      "cleanup": "owned container and scratch removed",
+      "checks": [
+        "complete cohort roster includes pending students without writes",
+        "zero grade and initial audit persist together without an import lot",
+        "duplicate, foreign-cohort, missing-record and other-teacher rejection preserve data hashes",
+        "correction recomputes SNEPA and retains actual previous values in audit",
+        "real PostgreSQL audit failures roll back both creation and correction",
+        "simultaneous first entry has one winner, one conflict and one audit",
+        "concurrent corrections serialize and retain an unbroken audit chain",
+        "schedule closure blocks waiting creation and later correction without data changes"
+      ]
+    },
+    "independent_verification": {
+      "status": "passed",
+      "groups_passed": 8,
+      "exit_code": 0,
+      "owned_containers_after": 0,
+      "owned_scratch_directories_after": 0,
+      "build": "passed",
+      "contracts": "all three copies match"
+    },
+    "parent_final_spot_check": {
+      "status": "passed",
+      "groups_passed": 8,
+      "exit_code": 0,
+      "cleanup": "completed before success output"
+    }
+  },
+  "auxiliary_unavailable": [
+    "native gentle-ai review executable",
+    "Engram recovery mirror"
+  ]
+}

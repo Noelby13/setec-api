@@ -1491,3 +1491,15 @@ export interface ApiEndpointMap<F = UploadDescriptor> {
   'POST /api/billing/enrollments/:id/obligations/:obligationId/cancel': ApiEndpoint<IdParam & {obligationId: UUID}, NoInput, {motivo: string}, ApiSuccess<BillingObligation>, 200, true, 'OBLIGACION_ANULAR', 'json'>;
   'GET /api/billing/enrollments/:id/receipts/:receiptId.pdf': ApiEndpoint<IdParam & {receiptId: UUID}, NoInput, NoInput, CertificatePdfDownload, 200, true>;
 }
+
+
+/** Cohort roster projection; grade columns are null before first entry. */
+export type ComponentStudent = {
+  [K in keyof MatriculaComponenteSnepaRow]: MatriculaComponenteSnepaRow[K] | null;
+} & {
+  inscripcion_id: UUID; codigo_expediente: string; inscripcion_estado: EstadoInscripcion;
+  nombres: string; apellidos: string; numero_identificacion: string;
+};
+export interface CreateGradeRequest extends ModifyGradeRequest {
+  calificacion_cuantitativa: number;
+}

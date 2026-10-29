@@ -1,7 +1,8 @@
 import ExcelJS from 'exceljs';
 import fs from 'fs';
 import { GradesDAO } from './grades.dao';
-import { ModifyGradeInput, ExcelGradeRow } from './grades.schema';
+import { ModifyGradeInput, ExcelGradeRow, CreateGradeInput } from './grades.schema';
+import type { AuthUserPayload } from '../../middlewares/auth.middleware';
 import { withTransaction } from '../../db/pool';
 import { AppError } from '../../middlewares/error.middleware';
 import { EscalaCualitativaSnepa } from '../../types/enums';
@@ -74,6 +75,44 @@ export function isGradeApproved(score: number, qualitative?: EscalaCualitativaSn
 }
 
 export class GradesService {
+  private static async editableSchedule(id: string, userId: string, role: string | undefined,
+    client: import('pg').PoolClient): Promise<any> {
+    const schedule = await GradesDAO.lockSchedule(id, client);
+    if (!schedule) throw new AppError('Programación de componente curricular no encontrada', 404);
+    if (role === 'DOCENTE' && schedule.docente_usuario_id !== userId)
+      throw new AppError('No tiene acceso a esta programación', 403);
+    if (schedule.actas_notas_cerradas) throw new AppError('Las actas de notas están cerradas', 400);
+    return schedule;
+  }
+
+  static async getStudentsByComponent(id: string): Promise<any[]> {
+    if (!await GradesDAO.getProgramacionComponenteById(id))
+      throw new AppError('Programación de componente curricular no encontrada', 404);
+    return GradesDAO.getStudentsByComponent(id);
+  }
+
+  static async createGradeManually(id: string, enrollmentId: string, data: CreateGradeInput,
+    user: AuthUserPayload): Promise<{ grade: any; auditLog: any }> {
+    return withTransaction(async client => {
+      const schedule = await this.editableSchedule(id, user.id, user.rol, client);
+      const result = await client.query('SELECT id, cohorte_id FROM inscripciones WHERE id = $1 FOR UPDATE', [enrollmentId]);
+      const enrollment = result.rows[0];
+      if (!enrollment) throw new AppError('Inscripción no encontrada', 404);
+      if (enrollment.cohorte_id !== schedule.cohorte_id)
+        throw new AppError('La inscripción no pertenece a esta cohorte', 400);
+      const qualitative = data.valoracion_cualitativa ?? calculateSnepaQualitativeScale(data.calificacion_cuantitativa);
+      const grade = await GradesDAO.createIndividualGrade(schedule, enrollmentId, data, user.id,
+        qualitative, isGradeApproved(data.calificacion_cuantitativa, qualitative), client);
+      if (!grade) throw new AppError('Ya existe una nota para este estudiante y componente. Recargue el registro y use Corregir nota.', 409);
+      const auditLog = await GradesDAO.insertNotaSnepaLog({
+        matricula_componente_id: grade.id, nota_anterior: null, nota_nueva: data.calificacion_cuantitativa,
+        cualitativa_anterior: null, cualitativa_nueva: qualitative,
+        motivo_modificacion: data.motivo_modificacion, modificado_por_usuario_id: user.id,
+      }, client);
+      return { grade, auditLog };
+    });
+  }
+
   /**
    * Import Grades from Excel file (.xlsx) under SNEPA guidelines.
    * POST /api/grades/import/:programacionComponenteId
@@ -312,17 +351,24 @@ export class GradesService {
   static async modifyGradeManually(
     matriculaComponenteId: string,
     data: ModifyGradeInput,
-    currentUserId: string
+    currentUserId: string,
+    currentUserRole?: string
   ): Promise<{
     grade: any;
     auditLog: any;
   }> {
     return await withTransaction(async (client) => {
       // 1. Fetch current grade
-      const currentGrade = await GradesDAO.getMatriculaComponenteById(matriculaComponenteId, client);
+      let currentGrade = await GradesDAO.getMatriculaComponenteById(matriculaComponenteId, client);
       if (!currentGrade) {
         throw new AppError('Registro de calificación no encontrado', 404);
       }
+
+      const scheduleId = currentGrade.programacion_componente_id;
+      await this.editableSchedule(scheduleId, currentUserId, currentUserRole, client);
+      currentGrade = await GradesDAO.getMatriculaComponenteById(matriculaComponenteId, client, true);
+      if (!currentGrade || currentGrade.programacion_componente_id !== scheduleId)
+        throw new AppError('La programación de la nota cambió. Recargue el registro.', 409);
 
       const notaAnterior = currentGrade.calificacion_cuantitativa !== null
         ? Number(currentGrade.calificacion_cuantitativa)

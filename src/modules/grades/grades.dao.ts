@@ -42,6 +42,45 @@ export interface NotaSnepaLogRecord {
 }
 
 export class GradesDAO {
+  static async lockSchedule(id: string, db: DbClient): Promise<any | null> {
+    const result = await db.query(`SELECT pcc.*, p.usuario_id AS docente_usuario_id
+      FROM programacion_componentes_cohorte pcc
+      LEFT JOIN personal_academico p ON p.id = pcc.docente_titular_id
+      WHERE pcc.id = $1 FOR UPDATE OF pcc`, [id]);
+    return result.rows[0] || null;
+  }
+
+  static async getStudentsByComponent(id: string): Promise<any[]> {
+    const result = await pool.query(`SELECT mcs.*, i.id AS inscripcion_id,
+      i.codigo_expediente, i.estado AS inscripcion_estado,
+      pa.nombres, pa.apellidos, pa.numero_identificacion
+      FROM programacion_componentes_cohorte pcc
+      JOIN inscripciones i ON i.cohorte_id = pcc.cohorte_id
+      JOIN personas_aspirantes pa ON pa.id = i.aspirante_id
+      LEFT JOIN matricula_componentes_snepa mcs
+        ON mcs.inscripcion_id = i.id AND mcs.programacion_componente_id = pcc.id
+      WHERE pcc.id = $1 ORDER BY pa.apellidos, pa.nombres, i.id`, [id]);
+    return result.rows;
+  }
+
+  static async createIndividualGrade(schedule: any, enrollmentId: string,
+    data: import('./grades.schema').CreateGradeInput, userId: string,
+    qualitative: EscalaCualitativaSnepa, approved: boolean, db: DbClient): Promise<any | null> {
+    const result = await db.query(`INSERT INTO matricula_componentes_snepa (
+      inscripcion_id, programacion_componente_id, componente_id, calificacion_cuantitativa,
+      valoracion_cualitativa, observacion_acompanamiento_pedagogico,
+      autoevaluacion_completada, coevaluacion_completada, aprobado,
+      registrado_por_usuario_id, es_modificada_manualmente
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,TRUE)
+    ON CONFLICT (inscripcion_id, componente_id) DO NOTHING RETURNING *`, [
+      enrollmentId, schedule.id, schedule.componente_id, data.calificacion_cuantitativa,
+      qualitative, data.observacion_acompanamiento_pedagogico ?? null,
+      data.autoevaluacion_completada ?? false, data.coevaluacion_completada ?? false,
+      approved, userId,
+    ]);
+    return result.rows[0] || null;
+  }
+
   /**
    * Retrieve modular scheduling row with cohort and curricular component details.
    */
@@ -221,7 +260,8 @@ export class GradesDAO {
    */
   static async getMatriculaComponenteById(
     id: string,
-    db: DbClient = pool
+    db: DbClient = pool,
+    lock = false
   ): Promise<any | null> {
     const query = `
       SELECT 
@@ -239,6 +279,7 @@ export class GradesDAO {
       JOIN personas_aspirantes pa ON pa.id = i.aspirante_id
       LEFT JOIN programacion_componentes_cohorte pcc ON pcc.id = mcs.programacion_componente_id
       WHERE mcs.id = $1
+      ${lock ? 'FOR UPDATE OF mcs' : ''}
     `;
     const result = await db.query(query, [id]);
     return result.rows[0] || null;

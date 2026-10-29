@@ -12,9 +12,18 @@ import {
   matriculaComponenteIdParamSchema,
   inscripcionIdParamSchema,
   modifyGradeSchema,
+  studentGradeParamsSchema,
+  createGradeSchema,
 } from './grades.schema';
 
 export const gradesRouter = Router();
+
+gradesRouter.get('/component/:programacionComponenteId/students', requireAuth,
+  requirePermission('NOTA_IMPORTAR'), requireTeachingAssignment,
+  validateSchema({ params: programacionComponenteIdParamSchema }), GradesController.getStudentsByComponent);
+gradesRouter.post('/component/:programacionComponenteId/students/:inscripcionId', requireAuth,
+  requirePermission('NOTA_MODIFICAR'), requireTeachingAssignment,
+  validateSchema({ params: studentGradeParamsSchema, body: createGradeSchema }), GradesController.createGrade);
 
 // Configure Multer storage in ./uploads/actas_excel/
 const uploadActasExcel = createUploadMiddleware('actas_excel', {

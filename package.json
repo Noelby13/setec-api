@@ -10,7 +10,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test:auth": "node --import tsx --test src/modules/auth/*.test.ts src/modules/users/*.test.ts",
-    "test": "node --import tsx --test src/middlewares/*.test.ts src/modules/auth/*.test.ts src/modules/users/*.test.ts src/modules/applicants/*.test.ts src/modules/enrollments/*.test.ts src/modules/graduation/*.test.ts src/modules/certificates/*.test.ts src/modules/billing/*.test.ts",
+    "test": "node --import tsx --test src/middlewares/*.test.ts src/modules/auth/*.test.ts src/modules/users/*.test.ts src/modules/applicants/*.test.ts src/modules/enrollments/*.test.ts src/modules/graduation/*.test.ts src/modules/certificates/*.test.ts src/modules/billing/*.test.ts src/modules/grades/*.test.ts",
     "contracts:check": "node scripts/sync-contracts.mjs --check",
     "contracts:sync": "node scripts/sync-contracts.mjs --write",
     "test:certificates:integration": "node --import tsx src/modules/certificates/certificates.integration.ts",

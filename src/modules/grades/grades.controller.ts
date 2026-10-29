@@ -5,6 +5,20 @@ import { getRelativeUploadPath } from '../../middlewares/upload.middleware';
 import { AppError } from '../../middlewares/error.middleware';
 
 export class GradesController {
+  static async getStudentsByComponent(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      res.json({ success: true, data: await GradesService.getStudentsByComponent(req.params.programacionComponenteId as string) });
+    } catch (error) { next(error); }
+  }
+
+  static async createGrade(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await GradesService.createGradeManually(req.params.programacionComponenteId as string,
+        req.params.inscripcionId as string, req.body, req.user!);
+      res.status(201).json({ success: true, data });
+    } catch (error) { next(error); }
+  }
+
   /**
    * Import Grades via Excel (.xlsx) file.
    * POST /api/grades/import/:programacionComponenteId
@@ -53,7 +67,8 @@ export class GradesController {
       const result = await GradesService.modifyGradeManually(
         matriculaComponenteId,
         body,
-        currentUserId
+        currentUserId,
+        req.user!.rol
       );
 
       res.status(200).json({

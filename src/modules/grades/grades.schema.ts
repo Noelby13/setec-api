@@ -38,6 +38,13 @@ export const modifyGradeSchema = z.object({
 });
 export type ModifyGradeInput = z.infer<typeof modifyGradeSchema>;
 
+export const studentGradeParamsSchema = programacionComponenteIdParamSchema.merge(inscripcionIdParamSchema);
+export const createGradeSchema = modifyGradeSchema.extend({
+  calificacion_cuantitativa: z.number().min(0).max(100),
+  motivo_modificacion: z.string().trim().min(5),
+});
+export type CreateGradeInput = z.infer<typeof createGradeSchema>;
+
 // Excel Row Data representation
 export interface ExcelGradeRow {
   codigo_expediente: string;

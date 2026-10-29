@@ -18,6 +18,7 @@ import { applicantsRouter } from './modules/applicants/applicant.routes';
 import { enrollmentRouter } from './modules/enrollments/enrollment.routes';
 import { gradesRouter } from './modules/grades/grades.routes';
 import { graduationRouter } from './modules/graduation/graduation.routes';
+import { virtualClassroomRouter } from './modules/virtual-classroom/virtual-classroom.routes';
 
 import { swaggerUi, swaggerDocument, swaggerOptions } from './config/swagger';
 
@@ -90,6 +91,7 @@ app.use('/api/grades', gradesRouter);
 
 // Graduation Dossiers, Scientific Publications & QR Verification (Fase 8)
 app.use('/api/graduation', graduationRouter);
+app.use('/api/virtual-classroom', virtualClassroomRouter);
 
 // 404 Handler for undefined routes
 app.use((req: Request, _res: Response, next: NextFunction) => {

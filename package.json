@@ -10,14 +10,15 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test:auth": "node --import tsx --test src/modules/auth/*.test.ts src/modules/users/*.test.ts",
-    "test": "node --import tsx --test src/middlewares/*.test.ts src/modules/auth/*.test.ts src/modules/users/*.test.ts src/modules/applicants/*.test.ts src/modules/enrollments/*.test.ts src/modules/graduation/*.test.ts src/modules/certificates/*.test.ts src/modules/billing/*.test.ts src/modules/grades/*.test.ts",
+    "test": "node --import tsx --test src/middlewares/*.test.ts src/modules/auth/*.test.ts src/modules/users/*.test.ts src/modules/applicants/*.test.ts src/modules/enrollments/*.test.ts src/modules/graduation/*.test.ts src/modules/certificates/*.test.ts src/modules/billing/*.test.ts src/modules/grades/*.test.ts src/modules/virtual-classroom/*.test.ts",
     "contracts:check": "node scripts/sync-contracts.mjs --check",
     "contracts:sync": "node scripts/sync-contracts.mjs --write",
     "test:certificates:integration": "node --import tsx src/modules/certificates/certificates.integration.ts",
     "test:enrollments:integration": "node --import tsx src/modules/enrollments/enrollment.integration.ts",
     "test:connected": "node scripts/connected-academic.e2e.mjs ..",
     "test:billing:integration": "node --import tsx src/modules/billing/billing.integration.ts",
-    "test:grades:integration": "node --import tsx src/modules/grades/grades.integration.ts"
+    "test:grades:integration": "node --import tsx src/modules/grades/grades.integration.ts",
+    "test:virtual-classroom:integration": "node --import tsx src/modules/virtual-classroom/virtual-classroom.integration.ts"
   },
   "keywords": [
     "express",

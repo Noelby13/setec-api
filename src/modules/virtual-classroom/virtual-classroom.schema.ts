@@ -16,6 +16,7 @@ export const courseMappingSchema = z.object({
 });
 export const exportSchema = z.object({ schedule_ids: z.array(uuid).min(1).max(100), format: z.enum(['xlsx', 'users_csv', 'courses_csv']) });
 export const scheduleParamSchema = z.object({ programacionComponenteId: uuid });
+export const courseScheduleParamSchema = z.object({ scheduleId: uuid });
 export const gradePreviewQuerySchema = z.object({ username_column: z.string().max(200).optional(), grade_column: z.string().max(200).optional() });
 export const gradeConfirmSchema = z.object({ preview_id: uuid, reason: z.string().trim().min(1).max(500).optional() });
 

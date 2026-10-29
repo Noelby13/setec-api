@@ -52,6 +52,19 @@ export class VirtualClassroomDAO {
       WHERE pcc.id=ANY($1::uuid[]) ORDER BY c.codigo_cohorte,cc.nombre`, [scheduleIds]);
   }
 
+  static async courseCodeOwners(codes: string[]) {
+    const normalized = [...new Set(codes.map(code => code.trim().toLowerCase()).filter(Boolean))];
+    if (!normalized.length) return { rows: [] as any[] };
+    return pool.query(`SELECT pcc.id AS schedule_id,lower(btrim(pcc.codigo_aula_virtual_externa)) AS code,'legacy'::text AS source
+        FROM programacion_componentes_cohorte pcc
+        WHERE NULLIF(btrim(pcc.codigo_aula_virtual_externa),'') IS NOT NULL
+          AND lower(btrim(pcc.codigo_aula_virtual_externa))=ANY($1::text[])
+      UNION ALL
+      SELECT vc.schedule_id,lower(btrim(vc.shortname)) AS code,'mapping'::text AS source
+        FROM virtual_classroom_courses vc
+        WHERE lower(btrim(vc.shortname))=ANY($1::text[])`,[normalized]);
+  }
+
   static async exportPeople(scheduleIds: string[], db: DbClient = pool) {
     return db.query(`
       SELECT pcc.id AS schedule_id, CASE WHEN pa.usuario_id IS NULL THEN 'applicant:' || pa.id::text ELSE 'user:' || pa.usuario_id::text END AS person_key,
@@ -112,7 +125,7 @@ export class VirtualClassroomDAO {
   }
 
   static async schedule(scheduleId: string, db: DbClient = pool) {
-    return db.query(`SELECT pcc.id,pcc.cohorte_id,pcc.componente_id,pcc.actas_notas_cerradas,
+    return db.query(`SELECT pcc.id,pcc.cohorte_id,pcc.componente_id,pcc.actas_notas_cerradas,pcc.codigo_aula_virtual_externa,
       pa.usuario_id AS docente_usuario_id FROM programacion_componentes_cohorte pcc
       LEFT JOIN personal_academico pa ON pa.id=pcc.docente_titular_id WHERE pcc.id=$1`, [scheduleId]);
   }
@@ -128,6 +141,19 @@ export class VirtualClassroomDAO {
       JOIN programacion_componentes_cohorte pcc ON pcc.cohorte_id=i.cohorte_id AND pcc.id=$1
       LEFT JOIN matricula_componentes_snepa mcs ON mcs.inscripcion_id=i.id AND mcs.componente_id=pcc.componente_id
       WHERE vm.username=ANY($2::text[]) AND vm.verified=TRUE`, [scheduleId,usernames]);
+  }
+
+  static async gradePreviewSnapshot(scheduleId: string, db: DbClient = pool) {
+    return db.query(`SELECT i.id AS enrollment_id,pa.nombres || ' ' || pa.apellidos AS student_name,
+      i.codigo_expediente,vm.username,vm.verified,mcs.id AS grade_id,
+      mcs.calificacion_cuantitativa AS current_grade
+      FROM programacion_componentes_cohorte pcc
+      JOIN inscripciones i ON i.cohorte_id=pcc.cohorte_id AND i.estado='MATRICULADO_ACTIVO'
+      JOIN personas_aspirantes pa ON pa.id=i.aspirante_id
+      LEFT JOIN virtual_classroom_accounts vm ON ((vm.person_type='applicant' AND pa.usuario_id IS NULL AND vm.person_id=pa.id)
+        OR (vm.person_type='user' AND vm.person_id=pa.usuario_id))
+      LEFT JOIN matricula_componentes_snepa mcs ON mcs.inscripcion_id=i.id AND mcs.componente_id=pcc.componente_id
+      WHERE pcc.id=$1 ORDER BY i.id`,[scheduleId]);
   }
 
   static async insertPreview(input: { id: string; scheduleId: string; actorId: string; source: Buffer; filename: string; rows: unknown[]; fingerprint: string }) {
@@ -164,7 +190,8 @@ export class VirtualClassroomDAO {
   }
 
   static async gradeFingerprint(scheduleId: string, db: DbClient = pool) {
-    return db.query(`SELECT i.id AS enrollment_id,vm.username,mcs.id AS grade_id,mcs.calificacion_cuantitativa
+    return db.query(`SELECT i.id AS enrollment_id,vm.username,vm.verified,mcs.id AS grade_id,
+      mcs.calificacion_cuantitativa AS current_grade
       FROM programacion_componentes_cohorte pcc JOIN inscripciones i ON i.cohorte_id=pcc.cohorte_id
       AND i.estado='MATRICULADO_ACTIVO' LEFT JOIN personas_aspirantes pa ON pa.id=i.aspirante_id
       LEFT JOIN virtual_classroom_accounts vm ON ((vm.person_type='applicant' AND pa.usuario_id IS NULL AND vm.person_id=pa.id)
@@ -182,6 +209,20 @@ export class VirtualClassroomDAO {
   static async applyGrade(input: { enrollmentId: string; scheduleId: string; componentId: string; grade: number; lotId: string; actorId: string; reason?: string; db: DbClient }) {
     const current = await input.db.query(`SELECT * FROM matricula_componentes_snepa WHERE inscripcion_id=$1 AND componente_id=$2 FOR UPDATE`, [input.enrollmentId,input.componentId]);
     let row = current.rows[0];
+    if (row && (row.calificacion_cuantitativa === null || row.calificacion_cuantitativa === undefined)) {
+      await input.db.query(`UPDATE matricula_componentes_snepa SET programacion_componente_id=$1,lote_importacion_id=$2,
+        calificacion_cuantitativa=$3,valoracion_cualitativa=CASE WHEN $3::numeric>=90 THEN 'APRENDIZAJE_AVANZADO'::escala_cualitativa_snepa_enum
+        WHEN $3::numeric>=80 THEN 'APRENDIZAJE_SATISFACTORIO'::escala_cualitativa_snepa_enum
+        WHEN $3::numeric>=70 THEN 'APRENDIZAJE_FUNDAMENTAL'::escala_cualitativa_snepa_enum
+        ELSE 'APRENDIZAJE_INICIAL'::escala_cualitativa_snepa_enum END,aprobado=$3::numeric>=70,
+        registrado_por_usuario_id=$4 WHERE id=$5`,[input.scheduleId,input.lotId,input.grade,input.actorId,row.id]);
+      const qualitative = input.grade >= 90 ? 'APRENDIZAJE_AVANZADO' : input.grade >= 80 ? 'APRENDIZAJE_SATISFACTORIO' : input.grade >= 70 ? 'APRENDIZAJE_FUNDAMENTAL' : 'APRENDIZAJE_INICIAL';
+      await input.db.query(`INSERT INTO notas_snepa_logs(matricula_componente_id,nota_anterior,nota_nueva,
+        cualitativa_anterior,cualitativa_nueva,motivo_modificacion,modificado_por_usuario_id)
+        VALUES($1,NULL,$2,$3,$4,'Primera calificación final importada desde Moodle',$5)`,
+      [row.id,input.grade,row.valoracion_cualitativa,qualitative,input.actorId]);
+      return;
+    }
     if (!row) {
       const created = await input.db.query(`INSERT INTO matricula_componentes_snepa
         (inscripcion_id,programacion_componente_id,componente_id,lote_importacion_id,calificacion_cuantitativa,

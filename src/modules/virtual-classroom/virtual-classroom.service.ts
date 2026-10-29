@@ -24,6 +24,16 @@ function validatedScheduleIds(ids: string[], rows: any[]) {
   return rows;
 }
 
+function gradeStateFingerprint(rows: any[]) {
+  return createHash('sha256').update(JSON.stringify(rows.map(row => ({
+    enrollment_id: row.enrollment_id,
+    username: row.username ?? null,
+    verified: row.verified ?? null,
+    grade_id: row.grade_id ?? null,
+    current_grade: row.current_grade ?? null,
+  })))).digest('hex');
+}
+
 export class VirtualClassroomService {
   static async candidates(query: { from?: string; to?: string; programa_id?: string; cohorte_id?: string }, user: AuthUserPayload) {
     const start = query.from ?? new Date().toISOString().slice(0, 10);
@@ -40,17 +50,28 @@ export class VirtualClassroomService {
 
   static async previewExport(scheduleIds: string[]) {
     const schedules = validatedScheduleIds(scheduleIds, (await VirtualClassroomDAO.exportContext(scheduleIds)).rows);
+    const codes = schedules.map(schedule => String(schedule.shortname ?? schedule.codigo_aula_virtual_externa ?? '').trim()).filter(Boolean);
+    const codeOwners = (await VirtualClassroomDAO.courseCodeOwners(codes)).rows;
     const peopleResult = await VirtualClassroomDAO.exportPeople(scheduleIds);
     const people = new Map<string, any>();
     const issues: { code: string; message: string; person_key?: string; schedule_id?: string }[] = [];
     const courses = schedules.map(schedule => {
-      const shortname = schedule.shortname ?? '';
+      const legacyCode = String(schedule.codigo_aula_virtual_externa ?? '').trim();
+      const mappedCode = String(schedule.shortname ?? '').trim();
+      const shortname = mappedCode || legacyCode;
       const category = schedule.category ?? '';
       const teacherRole = schedule.teacher_role ?? '';
       const fullname = `${schedule.componente_nombre} - ${schedule.codigo_cohorte}`;
       const summary = `${schedule.programa_nombre}; ${schedule.fecha_inicio ?? ''} a ${schedule.fecha_fin ?? ''}`;
       if (!shortname || !category || !teacherRole) issues.push({ code: 'COURSE_CONFIGURATION_MISSING', message: 'Configure shortname, categoría y rol docente del curso.', schedule_id: schedule.schedule_id });
       if (!schedule.teacher_id) issues.push({ code: 'TEACHER_REQUIRED', message: 'La programación requiere un docente asignado.', schedule_id: schedule.schedule_id });
+      if (legacyCode && mappedCode && legacyCode.toLowerCase() !== mappedCode.toLowerCase()) {
+        issues.push({ code:'LEGACY_COURSE_CODE_MISMATCH',message:'El shortname configurado no coincide con el código de aula virtual existente.',schedule_id:schedule.schedule_id });
+      }
+      const key = shortname.toLowerCase();
+      if (key && codeOwners.some(owner => owner.code === key && owner.schedule_id !== schedule.schedule_id)) {
+        issues.push({ code:'LEGACY_COURSE_CODE_CONFLICT',message:'El código Moodle ya pertenece a otra programación.',schedule_id:schedule.schedule_id });
+      }
       return { schedule_id: schedule.schedule_id, shortname, fullname, summary, category, teacher_role: teacherRole,
         fecha_inicio: schedule.fecha_inicio, fecha_fin: schedule.fecha_fin };
     });
@@ -95,7 +116,16 @@ export class VirtualClassroomService {
   }
 
   static async configureCourse(scheduleId: string, config: { shortname: string; category: string; teacher_role: string }, actor: AuthUserPayload) {
-    if (!(await VirtualClassroomDAO.schedule(scheduleId)).rows.length) throw new AppError('Programación de componente no encontrada.', 404);
+    const schedule = (await VirtualClassroomDAO.schedule(scheduleId)).rows[0];
+    if (!schedule) throw new AppError('Programación de componente no encontrada.', 404);
+    const legacyCode = String(schedule.codigo_aula_virtual_externa ?? '').trim();
+    if (legacyCode && legacyCode.toLowerCase() !== config.shortname.toLowerCase()) {
+      throw new AppError('El shortname debe conservar el código de aula virtual ya asignado.',409);
+    }
+    const codeOwners=(await VirtualClassroomDAO.courseCodeOwners([config.shortname])).rows;
+    if (codeOwners.some(owner=>owner.code===config.shortname.toLowerCase() && owner.schedule_id!==scheduleId)) {
+      throw new AppError('El código Moodle ya pertenece a otra programación.',409);
+    }
     return (await VirtualClassroomDAO.upsertCourse(scheduleId,config,actor.id)).rows[0];
   }
 
@@ -144,7 +174,9 @@ export class VirtualClassroomService {
   private static async parseWorkbook(file: Express.Multer.File) {
     const workbook = new ExcelJS.Workbook();
     try {
-      if (/\.csv$/i.test(file.originalname) || file.mimetype === 'text/csv') await workbook.csv.read(Readable.from([file.buffer]));
+      if (/\.csv$/i.test(file.originalname) || file.mimetype === 'text/csv') {
+        await workbook.csv.read(Readable.from([file.buffer]), { map: value => value });
+      }
       else {
         const xlsxBytes = Buffer.alloc(file.buffer.byteLength);
         file.buffer.copy(xlsxBytes);
@@ -192,8 +224,8 @@ export class VirtualClassroomService {
       if (username) usernames.add(username);
       rawRows.push({ row: rowNumber, username, grade: error ? null : numeric, ...(error ? { error } : {}) });
     });
-    const mapped = (await VirtualClassroomDAO.previewRows(scheduleId,[...usernames])).rows;
-    const byUsername = new Map(mapped.map(row => [row.username,row]));
+    const snapshot = (await VirtualClassroomDAO.gradePreviewSnapshot(scheduleId)).rows;
+    const byUsername = new Map(snapshot.filter(row => row.verified && row.username).map(row => [row.username,row]));
     const rows = rawRows.map(row => {
       const match = byUsername.get(row.username);
       let error = row.error;
@@ -202,11 +234,10 @@ export class VirtualClassroomService {
       const status = error ? 'error' : current === null ? 'new' : current === row.grade ? 'unchanged' : 'change';
       return { row: row.row, username: row.username, student_name: match?.student_name ?? null,
         expediente: match?.codigo_expediente ?? null, current_grade: current, grade: row.grade,
-        status, ...(error ? { error } : {}), ...(match ? { enrollment_id: match.inscripcion_id } : {}) };
+        status, ...(error ? { error } : {}), ...(match ? { enrollment_id: match.enrollment_id, grade_id: match.grade_id ?? null } : {}) };
     });
     const valid = rows.filter(row => row.status !== 'error');
-    const currentRows = (await VirtualClassroomDAO.gradeFingerprint(scheduleId)).rows;
-    const fingerprint = createHash('sha256').update(JSON.stringify(currentRows)).digest('hex');
+    const fingerprint = gradeStateFingerprint(snapshot);
     const issues = rows.some(row => row.status === 'error') ? [{ code: 'ROW_ERRORS', message: 'Corrija todas las filas con error antes de confirmar.' }] : [];
     const canConfirm = rows.length > 0 && !issues.length;
     let previewId: string | undefined;
@@ -215,7 +246,7 @@ export class VirtualClassroomService {
       await VirtualClassroomDAO.insertPreview({ id: previewId,scheduleId,actorId: actor.id,source: file.buffer,
         filename: file.originalname,rows: valid,fingerprint });
     }
-    return { columns: headers, ...(previewId ? { preview_id: previewId } : {}), rows: rows.map(({ enrollment_id: _id, ...row }) => row), issues,
+    return { columns: headers, ...(previewId ? { preview_id: previewId } : {}), rows: rows.map(({ enrollment_id: _id, grade_id: _gradeId, ...row }) => row), issues,
       can_confirm: canConfirm };
   }
 
@@ -229,7 +260,7 @@ export class VirtualClassroomService {
       if (!preview || preview.schedule_id !== scheduleId) throw new AppError('La vista previa expiró o no pertenece a esta programación. Genere una nueva.',409);
       await VirtualClassroomDAO.lockGradeFingerprint(scheduleId,locked.cohorte_id,client);
       const fresh = (await VirtualClassroomDAO.gradeFingerprint(scheduleId,client)).rows;
-      const fingerprint = createHash('sha256').update(JSON.stringify(fresh)).digest('hex');
+      const fingerprint = gradeStateFingerprint(fresh);
       if (fingerprint !== preview.fingerprint) throw new AppError('Los estudiantes, vinculaciones o notas cambiaron desde la vista previa. Genere una nueva.',409);
       const rows = preview.preview_rows as any[];
       const changes = rows.filter(row => row.status === 'change');

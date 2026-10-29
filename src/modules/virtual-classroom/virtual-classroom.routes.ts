@@ -6,7 +6,7 @@ import { AppError } from '../../middlewares/error.middleware';
 import { validateSchema } from '../../middlewares/validate.middleware';
 import { VirtualClassroomController } from './virtual-classroom.controller';
 import { accountMappingSchema, candidatesQuerySchema, courseMappingSchema, exportPreviewSchema,
-  exportSchema, gradeConfirmSchema, gradePreviewQuerySchema, scheduleParamSchema } from './virtual-classroom.schema';
+  courseScheduleParamSchema, exportSchema, gradeConfirmSchema, gradePreviewQuerySchema, scheduleParamSchema } from './virtual-classroom.schema';
 
 export const virtualClassroomRouter = Router();
 
@@ -31,7 +31,7 @@ virtualClassroomRouter.post('/exports/preview',requireAuth,requireAnyPermission(
 virtualClassroomRouter.put('/accounts/:personKey',requireAuth,requireAnyPermission('COHORTE_GESTIONAR'),
   validateSchema({ body: accountMappingSchema }),VirtualClassroomController.configureAccount);
 virtualClassroomRouter.put('/courses/:scheduleId',requireAuth,requireAnyPermission('COHORTE_GESTIONAR'),
-  validateSchema({ params: scheduleParamSchema, body: courseMappingSchema }),VirtualClassroomController.configureCourse);
+  validateSchema({ params: courseScheduleParamSchema, body: courseMappingSchema }),VirtualClassroomController.configureCourse);
 virtualClassroomRouter.post('/exports',requireAuth,requireAnyPermission('COHORTE_GESTIONAR'),
   validateSchema({ body: exportSchema }),VirtualClassroomController.createExport);
 virtualClassroomRouter.get('/exports',requireAuth,requireAnyPermission('COHORTE_GESTIONAR'),VirtualClassroomController.listExports);

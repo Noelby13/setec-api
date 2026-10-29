@@ -28,7 +28,9 @@ Content-Type: application/json
 {"username":"ana.perez","verified":true}
 ```
 
-Only `COHORTE_GESTIONAR` may edit mappings and generate files. Usernames and course shortnames are unique in the database. The preview endpoint is `POST /api/virtual-classroom/exports/preview` with `{ "schedule_ids": ["..."] }`. Resolve every returned issue before `POST /api/virtual-classroom/exports` with the same schedule IDs and `format` set to `xlsx`, `users_csv`, or `courses_csv`.
+Only `COHORTE_GESTIONAR` may edit mappings and generate files. Usernames and course shortnames are unique in the database. If an older schedule already has `codigo_aula_virtual_externa`, keep that value as the course shortname; the preview and mapping save check ownership across all schedules, including schedules outside the selected export. A code already owned by another schedule blocks both saving and export.
+
+The preview endpoint is `POST /api/virtual-classroom/exports/preview` with `{ "schedule_ids": ["..."] }`. Resolve every returned issue before `POST /api/virtual-classroom/exports` with the same schedule IDs and `format` set to `xlsx`, `users_csv`, or `courses_csv`.
 
 The workbook contains `Usuarios` and `Cursos`. User CSV headers include `username,firstname,lastname,email` and one `courseN,roleN` pair per selected schedule. Course CSV headers are `shortname,fullname,summary,category`. Accents are preserved and CSV values use standard quoted escaping. `GET /api/virtual-classroom/exports` lists the actor's generated batch metadata and content snapshot; generated content is stored privately for audit.
 

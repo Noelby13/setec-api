@@ -17,7 +17,10 @@ test('virtual classroom routes require an authenticated user and expose candidat
   mock.method(AuthDao, 'findUserById', async () => ({ id: userId, activo: true, rol_nombre: auth.role, rol_id: 'role' }));
   mock.method(AuthDao, 'getPermissionsByRoleId', async () => auth.permissions);
   mock.method(AuthDao, 'findActiveSessionById', async () => ({ id: 'session' }));
-  mock.method(pool, 'query', async (sql: string, values: unknown[] = []) => { queries.push({sql,values}); return ({ rows: sql.includes('FROM programacion_componentes_cohorte pcc') ? [{
+  mock.method(pool, 'query', async (sql: string, values: unknown[] = []) => { queries.push({sql,values});
+    if(sql.includes('INSERT INTO virtual_classroom_courses')) return { rows:[{ shortname:values[1],category:values[2],teacher_role:values[3] }] } as any;
+    if(sql.includes('lower(btrim(pcc.codigo_aula_virtual_externa))')) return { rows:[] } as any;
+    return ({ rows: sql.includes('FROM programacion_componentes_cohorte pcc') ? [{
     programa_id: '00000000-0000-4000-8000-000000000010', programa_nombre: 'Programa Ágil',
     cohorte_id: '00000000-0000-4000-8000-000000000011', codigo_cohorte: 'PEP-01',
     schedule_id: '00000000-0000-4000-8000-000000000012', componente_nombre: 'Gestión Pública',
@@ -35,6 +38,10 @@ test('virtual classroom routes require an authenticated user and expose candidat
   assert.equal(response.body.data.schedules[0].componente_nombre, 'Gestión Pública');
   assert.equal((await http.request(`${path}?from=not-a-date`, 'GET', undefined, token)).status, 400);
   assert.equal((await http.request('/api/virtual-classroom/exports/preview', 'POST', { schedule_ids: [] }, token)).status, 400);
+  const course = await http.request('/api/virtual-classroom/courses/00000000-0000-4000-8000-000000000012','PUT',
+    { shortname:'VCLASS-1',category:'Posgrados',teacher_role:'editingteacher' },token);
+  assert.equal(course.status,200,'valid course mapping must be accepted');
+  assert.equal(course.body.data.shortname,'VCLASS-1');
   auth.role = 'DOCENTE'; auth.permissions = [];
   assert.equal((await http.request(path, 'GET', undefined, token)).status, 403);
   auth.permissions = ['NOTA_IMPORTAR'];

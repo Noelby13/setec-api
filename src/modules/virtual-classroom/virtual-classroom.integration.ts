@@ -18,6 +18,7 @@ async function main() {
   let created = false;
   let pool: import('pg').Pool | undefined;
   const checks: string[] = [];
+  const regressionResults: { name: string; passed: boolean; detail: string }[] = [];
   function docker(args: string[]) {
     const result = spawnSync('/usr/local/bin/docker', ['--host','unix:///var/run/docker.sock',...args],
       { encoding: 'utf8',timeout: 30000 });
@@ -93,6 +94,30 @@ async function main() {
     assert.match(exported,/lucia\.moodle,Lucía,Álvarez/);
     assert.equal((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count,1);
     checks.push('active-only roster consolidation produces one accented account row across two courses');
+
+    await q("UPDATE programacion_componentes_cohorte SET codigo_aula_virtual_externa='VCLASS-0' WHERE id=$1",[schedules[1].id]);
+    const legacyPreview = await VirtualClassroomService.previewExport([schedules[0].id]);
+    let legacySaveError: any;
+    let legacyExportError: any;
+    try { await VirtualClassroomService.configureCourse(schedules[0].id,{shortname:'VCLASS-0',category:'Posgrados',teacher_role:'editingteacher'},actor); }
+    catch (error) { legacySaveError=error; }
+    const exportCountBeforeLegacyAttempt=Number((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count);
+    try { await VirtualClassroomService.createExport([schedules[0].id],'courses_csv',actor); }
+    catch (error) { legacyExportError=error; }
+    const exportCountAfterLegacyAttempt=Number((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count);
+    const legacyConflict = legacyPreview.issues.some((issue:any)=>issue.code==='LEGACY_COURSE_CODE_CONFLICT');
+    await q("UPDATE programacion_componentes_cohorte SET codigo_aula_virtual_externa='VCLASS-0' WHERE id=$1",[schedules[0].id]);
+    await q('UPDATE programacion_componentes_cohorte SET codigo_aula_virtual_externa=NULL WHERE id=$1',[schedules[1].id]);
+    await q('DELETE FROM virtual_classroom_courses WHERE schedule_id=$1',[schedules[0].id]);
+    const legacyFallbackPreview=await VirtualClassroomService.previewExport([schedules[0].id]);
+    let selfCodeError:any;
+    try { await VirtualClassroomService.configureCourse(schedules[0].id,{shortname:'VCLASS-0',category:'Posgrados',teacher_role:'editingteacher'},actor); }
+    catch (error) { selfCodeError=error; }
+    const selfPreview=await VirtualClassroomService.previewExport([schedules[0].id]);
+    const selfCodeAllowed=legacyFallbackPreview.courses[0].shortname==='VCLASS-0' && !legacyFallbackPreview.issues.some((issue:any)=>issue.code==='LEGACY_COURSE_CODE_CONFLICT') &&
+      !selfCodeError && selfPreview.courses[0].shortname==='VCLASS-0' && !selfPreview.issues.some((issue:any)=>issue.code.startsWith('LEGACY_COURSE_CODE_'));
+    regressionResults.push({ name:'B5 legacy course ownership',passed:legacyConflict && legacySaveError?.statusCode===409 && legacyExportError?.statusCode===400 && exportCountAfterLegacyAttempt===exportCountBeforeLegacyAttempt && selfCodeAllowed,
+      detail:JSON.stringify({legacyConflict,saveStatus:legacySaveError?.statusCode,exportStatus:legacyExportError?.statusCode,exportCountBeforeLegacyAttempt,exportCountAfterLegacyAttempt,selfCodeAllowed}) });
     const file = { originalname:'grades.csv',mimetype:'text/csv',buffer:Buffer.from('Username,Final grade\r\nlucia.moodle,85\r\n') } as Express.Multer.File;
     const uploadActor = { ...actor,permisos:['NOTA_IMPORTAR','NOTA_MODIFICAR'] };
     const firstPreview = await VirtualClassroomService.previewGrades(schedules[0].id,file,'Username','Final grade',uploadActor);
@@ -102,6 +127,48 @@ async function main() {
     assert.equal(firstConfirmation.processed,1);
     assert.equal(Number((await one('SELECT calificacion_cuantitativa FROM matricula_componentes_snepa WHERE programacion_componente_id=$1',[schedules[0].id])).calificacion_cuantitativa),85);
     assert.equal((await one('SELECT length(source_bytes) AS bytes FROM virtual_classroom_grade_previews WHERE id=$1',[firstPreview.preview_id])).bytes>0,true);
+    const { VirtualClassroomDAO } = await import(pathToFileURL(path.join(root,'src/modules/virtual-classroom/virtual-classroom.dao.ts')).href);
+    const dao:any=VirtualClassroomDAO;
+    let interleaved=false;
+    const originalSnapshot=dao.gradePreviewSnapshot;
+    const originalFingerprint=dao.gradeFingerprint;
+    if(originalSnapshot) dao.gradePreviewSnapshot=async (...args:any[])=>{
+      const snapshot=await originalSnapshot(...args);
+      if(!interleaved){interleaved=true;await q('UPDATE matricula_componentes_snepa SET calificacion_cuantitativa=87 WHERE programacion_componente_id=$1',[schedules[0].id]);}
+      return snapshot;
+    };
+    else dao.gradeFingerprint=async (...args:any[])=>{
+      if(!interleaved){interleaved=true;await q('UPDATE matricula_componentes_snepa SET calificacion_cuantitativa=87 WHERE programacion_componente_id=$1',[schedules[0].id]);}
+      return originalFingerprint(...args);
+    };
+    let racePreview:any, raceResult:any, raceError:any;
+    try {
+      racePreview=await VirtualClassroomService.previewGrades(schedules[0].id,file,'Username','Final grade',uploadActor);
+      try { raceResult=await VirtualClassroomService.confirmGrades(schedules[0].id,{preview_id:racePreview.preview_id!},uploadActor); }
+      catch(error) { raceError=error; }
+    } finally {
+      if(originalSnapshot) dao.gradePreviewSnapshot=originalSnapshot;
+      dao.gradeFingerprint=originalFingerprint;
+    }
+    const racedGrade=await one('SELECT calificacion_cuantitativa FROM matricula_componentes_snepa WHERE programacion_componente_id=$1',[schedules[0].id]);
+    regressionResults.push({name:'B4 preview state consistency',passed:raceError?.statusCode===409 && Number(racedGrade.calificacion_cuantitativa)===87,
+      detail:JSON.stringify({previewStatus:racePreview?.rows?.[0]?.status,result:raceResult,errorStatus:raceError?.statusCode,persistedGrade:racedGrade.calificacion_cuantitativa})});
+    await q('UPDATE matricula_componentes_snepa SET calificacion_cuantitativa=85 WHERE programacion_componente_id=$1',[schedules[0].id]);
+    const enrollmentTwo=await one('SELECT id FROM inscripciones WHERE aspirante_id=$1 AND cohorte_id=$2',[applicant.id,cohorts[1].id]);
+    const nullGradeRow=await one(`INSERT INTO matricula_componentes_snepa(inscripcion_id,programacion_componente_id,componente_id,
+      autoevaluacion_completada,coevaluacion_completada) VALUES($1,$2,$3,TRUE,TRUE) RETURNING id`,[enrollmentTwo.id,schedules[1].id,component.id]);
+    const nullPreview=await VirtualClassroomService.previewGrades(schedules[1].id,file,'Username','Final grade',uploadActor);
+    let nullError:any,nullResult:any;
+    const initialGradeActor={id:admin.id,rol:'OPERATOR',permisos:['NOTA_IMPORTAR']};
+    try { nullResult=await VirtualClassroomService.confirmGrades(schedules[1].id,{preview_id:nullPreview.preview_id!},initialGradeActor); }
+    catch(error) { nullError=error; }
+    const nullGrade=await one('SELECT id,calificacion_cuantitativa,autoevaluacion_completada,coevaluacion_completada,es_convalidada FROM matricula_componentes_snepa WHERE id=$1',[nullGradeRow.id]);
+    const nullAudit=await one('SELECT nota_anterior,nota_nueva,motivo_modificacion FROM notas_snepa_logs WHERE matricula_componente_id=$1',[nullGradeRow.id]);
+    regressionResults.push({name:'B3 existing row without final grade',passed:nullPreview.rows[0].status==='new' && !nullError && nullResult?.processed===1 && Number(nullGrade?.calificacion_cuantitativa)===85 && nullGrade?.autoevaluacion_completada===true && nullGrade?.coevaluacion_completada===true && nullGrade?.es_convalidada===false && nullAudit?.nota_anterior===null && Boolean(nullAudit?.motivo_modificacion),
+      detail:JSON.stringify({previewStatus:nullPreview.rows[0].status,error:nullError?.message,result:nullResult,grade:nullGrade,audit:nullAudit})});
+    await q('DELETE FROM notas_snepa_logs WHERE matricula_componente_id=$1',[nullGradeRow.id]);
+    await q('DELETE FROM matricula_componentes_snepa WHERE id=$1',[nullGradeRow.id]);
+    await q('DELETE FROM lotes_importacion_notas WHERE archivo_excel_url=$1',[`virtual-classroom:${nullPreview.preview_id}`]);
     const samePreview = await VirtualClassroomService.previewGrades(schedules[0].id,file,'Username','Final grade',uploadActor);
     assert.equal(samePreview.rows[0].status,'unchanged');
     const same = await VirtualClassroomService.confirmGrades(schedules[0].id,{preview_id:samePreview.preview_id!},uploadActor);
@@ -151,6 +218,8 @@ async function main() {
       (error: any) => error.statusCode===400);
     checks.push('mapping changes invalidate previews and closed schedules reject import');
     assert.ok(createHash('sha256').update(exported).digest('hex'));
+    assert.deepEqual(regressionResults.filter(result=>!result.passed),[],`Independent regression probes failed: ${JSON.stringify(regressionResults)}`);
+    checks.push(...regressionResults.map(result=>result.name+' passed'));
   } finally {
     try { if (pool) await pool.end(); }
     finally {

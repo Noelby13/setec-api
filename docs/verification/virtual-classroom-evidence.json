@@ -4,21 +4,26 @@
   "status": "passed_with_deployment_validation_pending",
   "api": {
     "baseline": "a353a867f6e317cfdecdada103c6e2a995ed7a54",
-    "candidate": "7aa7418f86b8166eba1e9902088ab48215e7dbdc",
-    "tests": 138,
+    "candidate": "30c775356f2a6fe516ab63404651f43deab7aabd",
+    "tests": 142,
     "build": "passed",
-    "focused_tests": 5,
+    "focused_tests": 9,
     "postgres_integration": "passed in disposable PostgreSQL16; cached local container image"
   },
   "admin": {
     "baseline": "84ebcadd18c2ee7ac4d5db81e26985be8e1c95bf",
-    "candidate": "81a942d433c953c3f3de775a1a5eadb3b01f2bca",
-    "tests": 195,
+    "candidate": "e6172981db48e94d1ab9178fe309fa46607c503d",
+    "tests": 203,
     "build": "passed",
     "browser_tests": {
       "desktop": "passed",
       "mobile": "passed",
-      "server": "fresh isolated loopback Vite server"
+      "server": "fresh isolated loopback Vite server",
+      "count": 4,
+      "scopes": [
+        "Aula Virtual",
+        "Notas"
+      ]
     }
   },
   "independent": {
@@ -28,7 +33,9 @@
       "S3": "PASS within tested contract",
       "S4": "PASS within tested contract",
       "S5": "PASS within tested contract",
-      "S6": "PASS within tested contract"
+      "S6": "PASS within tested contract",
+      "S7": "PASS within tested contract",
+      "S8": "PASS within tested contract"
     },
     "corrected_blockers": {
       "B1": "valid course PUT returns200",
@@ -68,5 +75,44 @@
     "selection_preview_query": "PASS",
     "source_code_changes": false,
     "browser_and_grade_write_retest": "not repeated for additive schema application"
+  },
+  "editable_proposals": {
+    "api_commit": "c82cbddec4a5d147510d1f84683ba45e96460d60",
+    "ui_commit": "35bb5054cb2caa862aa3fc929642dcab7486af77",
+    "independent": "PASS real HTTP/persistence/CSV/unchanged masters and scoped username subset stability recheck",
+    "local_nullable_columns_applied": 5,
+    "preview_changes_master_data": false,
+    "explicit_review_before_export": true,
+    "missing_real_email_is_fabricated": false
+  },
+  "cohort_workflow": {
+    "default_states": [
+      "INSCRIPCION_ABIERTA",
+      "QUORUM_ALCANZADO_COBRANDO",
+      "EN_EJECUCION"
+    ],
+    "implicit_date_filter": false,
+    "explicit_legacy_date_API_preserved": true,
+    "duplicate_grade_upload_on_aula": false,
+    "grade_workspace": "/notas",
+    "default_format": "SNEPA",
+    "optional_format": "Moodle CSV/XLSX",
+    "deep_link_preserves": [
+      "cohorte",
+      "programacion",
+      "origen"
+    ],
+    "independent_postgres_groups": 13,
+    "independent_deferred_UI_probes_passed": 2,
+    "local_read_only_check": {
+      "cohorts": 1,
+      "schedules": 1,
+      "states": [
+        "INSCRIPCION_ABIERTA"
+      ],
+      "course_fields_filled": true,
+      "usernames_filled": true,
+      "missing_real_emails": 1
+    }
   }
 }

@@ -8,7 +8,7 @@ Apply `database/migrations/20261029_virtual_classroom.sql` to an existing instal
 
 ## Candidate selection and mapping
 
-`GET /api/virtual-classroom/candidates` accepts optional `from`, `to`, `programa_id`, and `cohorte_id` query parameters. Dates default to today through the following 30 days. A `COHORTE_GESTIONAR` user sees the matching schedule set; grade users may inspect schedules permitted by their role, and teachers see only their assigned schedules.
+`GET /api/virtual-classroom/candidates` accepts optional `estado_cohorte`, `programa_id`, and `cohorte_id` query parameters. Without a state or legacy date filter, it returns cohorts in `INSCRIPCION_ABIERTA`, `QUORUM_ALCANZADO_COBRANDO`, or `EN_EJECUCION`, regardless of schedule dates. An explicit `estado_cohorte` selects that exact existing cohort state. For older API clients, supplying `from` or `to` retains the prior date-window behavior and does not implicitly filter states; an explicit state still applies. Returned cohort and schedule rows include `estado_cohorte`. A `COHORTE_GESTIONAR` user sees the matching schedule set; grade users may inspect schedules permitted by their role, and teachers see only their assigned schedules.
 
 Before generation, configure each component/cohort Moodle course:
 

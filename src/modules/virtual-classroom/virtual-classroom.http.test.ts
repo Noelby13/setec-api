@@ -28,6 +28,7 @@ test('virtual classroom routes require an authenticated user and expose candidat
     cohorte_id: '00000000-0000-4000-8000-000000000011', codigo_cohorte: 'PEP-01',
     schedule_id: '00000000-0000-4000-8000-000000000012', componente_nombre: 'Gestión Pública',
     fecha_inicio: '2026-11-01', fecha_fin: '2026-11-30', docente_nombre: 'Ana Pérez', actas_notas_cerradas: false,
+    estado_cohorte: 'INSCRIPCION_ABIERTA',
   }] : [] } as any); });
   const http = isolatedHttp(app);
   const path = '/api/virtual-classroom/candidates';
@@ -37,8 +38,29 @@ test('virtual classroom routes require an authenticated user and expose candidat
   const response = await http.request(path, 'GET', undefined, token);
   assert.equal(response.status, 200);
   assert.deepEqual(response.body.data.programs, [{ id: '00000000-0000-4000-8000-000000000010', nombre: 'Programa Ágil' }]);
-  assert.deepEqual(response.body.data.cohorts, [{ id: '00000000-0000-4000-8000-000000000011', programa_id: '00000000-0000-4000-8000-000000000010', codigo_cohorte: 'PEP-01' }]);
+  assert.deepEqual(response.body.data.cohorts, [{ id: '00000000-0000-4000-8000-000000000011', programa_id: '00000000-0000-4000-8000-000000000010', codigo_cohorte: 'PEP-01', estado_cohorte: 'INSCRIPCION_ABIERTA' }]);
   assert.equal(response.body.data.schedules[0].componente_nombre, 'Gestión Pública');
+  assert.equal(response.body.data.cohorts[0].estado_cohorte, 'INSCRIPCION_ABIERTA');
+  assert.equal(response.body.data.schedules[0].estado_cohorte, 'INSCRIPCION_ABIERTA');
+  assert.match(queries.at(-1)!.sql,/estado_cohorte IN \('INSCRIPCION_ABIERTA','QUORUM_ALCANZADO_COBRANDO','EN_EJECUCION'\)/);
+  assert.equal(queries.at(-1)!.values[0],null);
+  assert.equal(queries.at(-1)!.values[1],null);
+  assert.equal((await http.request(`${path}?estado_cohorte=FINALIZADA_PENDIENTE_EVAL`, 'GET', undefined, token)).status,200);
+  assert.equal(queries.at(-1)!.values[4],'FINALIZADA_PENDIENTE_EVAL');
+  assert.equal(queries.at(-1)!.values[5],false);
+  assert.equal((await http.request(`${path}?estado_cohorte=INVALIDO`, 'GET', undefined, token)).status,400);
+  assert.equal((await http.request(`${path}?from=2026-10-29`, 'GET', undefined, token)).status,200);
+  assert.equal(queries.at(-1)!.values[4],null);
+  assert.equal(queries.at(-1)!.values[5],false);
+  assert.equal(queries.at(-1)!.values[0],'2026-10-29');
+  assert.equal(queries.at(-1)!.values[1],'2026-11-28');
+  assert.equal((await http.request(`${path}?to=2026-11-30`, 'GET', undefined, token)).status,200);
+  assert.equal(queries.at(-1)!.values[0],new Date().toISOString().slice(0,10));
+  assert.equal(queries.at(-1)!.values[1],'2026-11-30');
+  assert.equal((await http.request(`${path}?from=2026-12-01&to=2026-11-30`, 'GET', undefined, token)).status,400);
+  assert.equal((await http.request(`${path}?from=2026-10-29&estado_cohorte=CANCELADA`, 'GET', undefined, token)).status,200);
+  assert.equal(queries.at(-1)!.values[4],'CANCELADA');
+  assert.equal(queries.at(-1)!.values[5],false);
   assert.equal((await http.request(`${path}?from=not-a-date`, 'GET', undefined, token)).status, 400);
   assert.equal((await http.request('/api/virtual-classroom/exports/preview', 'POST', { schedule_ids: [] }, token)).status, 400);
   const course = await http.request('/api/virtual-classroom/courses/00000000-0000-4000-8000-000000000012','PUT',
@@ -59,8 +81,8 @@ test('virtual classroom routes require an authenticated user and expose candidat
   assert.equal((await http.request(path, 'GET', undefined, token)).status, 403);
   auth.permissions = ['NOTA_IMPORTAR'];
   assert.equal((await http.request(`${path}?from=2026-10-29&to=2026-11-30`, 'GET', undefined, token)).status, 200);
-  assert.match(queries.at(-1)!.sql,/pa\.usuario_id=\$6/);
-  assert.equal(queries.at(-1)!.values[4],true);
-  assert.equal(queries.at(-1)!.values[5],userId);
+  assert.match(queries.at(-1)!.sql,/pa\.usuario_id=\$8/);
+  assert.equal(queries.at(-1)!.values[6],true);
+  assert.equal(queries.at(-1)!.values[7],userId);
   assert.equal((await http.request(`/api/virtual-classroom/accounts/applicant:${userId}`,'PUT',{ username:'moodle.user',verified:true,firstname:'Ana',lastname:'Pérez',email:'ana@example.test' },token)).status,403);
 });

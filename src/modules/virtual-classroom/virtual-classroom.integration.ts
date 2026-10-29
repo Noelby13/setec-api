@@ -85,6 +85,29 @@ async function main() {
     assert.equal(candidateResult.schedules.length,2);
     assert.equal(candidateResult.schedules[0].componente_nombre,'Gestión Pública');
     checks.push('candidate query preserves program/cohort/component identity and accent text');
+    const stateFixtures:any[]=[];
+    for (const [index,state] of ['INSCRIPCION_ABIERTA','QUORUM_ALCANZADO_COBRANDO','EN_EJECUCION','PLANIFICADA','CANCELADA'].entries()) {
+      const cohort=await one(`INSERT INTO cohortes_apertura(programa_id,sede_id,modalidad,codigo_cohorte,numero_edicion,coordinador_id,
+        fecha_inicio_inscripcion,fecha_fin_inscripcion,fecha_inicio_clases,fecha_fin_clases,precio_total_cohorte,estado_cohorte)
+        VALUES($1,$2,'PRESENCIAL',$3,1,$4,'2026-10-01','2026-10-20',$5,'2028-01-01',0,$6) RETURNING id`,
+      [program.id,campus.id,`VCLASS-STATE-${index}`,teacher.id,index===0?'2020-01-01':index===2?'2035-01-01':'2026-11-01',state]);
+      const schedule=await one(`INSERT INTO programacion_componentes_cohorte(cohorte_id,componente_id,docente_titular_id,fecha_inicio,fecha_fin)
+        VALUES($1,$2,$3,$4,$5) RETURNING id`,[cohort.id,component.id,index===0?null:teacher.id,index===1?'2020-02-01':index===2?null:'2026-11-01',index===1?'2020-03-01':null]);
+      stateFixtures.push({cohortId:cohort.id,scheduleId:schedule.id,state});
+    }
+    const operational=await VirtualClassroomService.candidates({},actor);
+    assert.equal(operational.schedules.length,3);
+    assert.deepEqual(new Set(operational.schedules.map((row:any)=>row.estado_cohorte)),
+      new Set(['INSCRIPCION_ABIERTA','QUORUM_ALCANZADO_COBRANDO','EN_EJECUCION']));
+    assert.equal(operational.cohorts.length,3);
+    const exactCancelled=await VirtualClassroomService.candidates({estado_cohorte:'CANCELADA'},actor);
+    assert.deepEqual(exactCancelled.schedules.map((row:any)=>row.estado_cohorte),['CANCELADA']);
+    const legacyAll=await VirtualClassroomService.candidates({from:'2026-10-29',to:'2026-12-01'},actor);
+    assert.ok(legacyAll.schedules.some((row:any)=>row.estado_cohorte==='PLANIFICADA'));
+    assert.ok(legacyAll.schedules.some((row:any)=>row.estado_cohorte==='CANCELADA'));
+    await q('DELETE FROM programacion_componentes_cohorte WHERE id=ANY($1::uuid[])',[stateFixtures.map(row=>row.scheduleId)]);
+    await q('DELETE FROM cohortes_apertura WHERE id=ANY($1::uuid[])',[stateFixtures.map(row=>row.cohortId)]);
+    checks.push('default SQL filters the three operational states independent of null, past, or future dates; explicit state and legacy date paths remain distinct');
     const preview = await VirtualClassroomService.previewExport(schedules.map(item => item.id));
     assert.equal(preview.courses.length,2);
     assert.equal(preview.people.filter((person: any) => person.kind==='student').length,1);

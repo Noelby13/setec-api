@@ -54,17 +54,24 @@ function gradeStateFingerprint(rows: any[]) {
 }
 
 export class VirtualClassroomService {
-  static async candidates(query: { from?: string; to?: string; programa_id?: string; cohorte_id?: string }, user: AuthUserPayload) {
-    const start = query.from ?? new Date().toISOString().slice(0, 10);
-    const endDate = query.to ? new Date(`${query.to}T00:00:00Z`) : new Date(`${start}T00:00:00Z`);
-    if (!query.to) endDate.setUTCDate(endDate.getUTCDate() + 30);
-    const end = endDate.toISOString().slice(0, 10);
-    if (start > end) throw new AppError('La fecha inicial debe ser anterior a la fecha final.', 400);
+  static async candidates(query: { from?: string; to?: string; programa_id?: string; cohorte_id?: string; estado_cohorte?: string }, user: AuthUserPayload) {
+    const hasLegacyDateFilter = query.from !== undefined || query.to !== undefined;
+    let start: string | undefined;
+    let end: string | undefined;
+    if (hasLegacyDateFilter) {
+      start = query.from ?? new Date().toISOString().slice(0, 10);
+      const endDate = query.to ? new Date(`${query.to}T00:00:00Z`) : new Date(`${start}T00:00:00Z`);
+      if (!query.to) endDate.setUTCDate(endDate.getUTCDate() + 30);
+      end = endDate.toISOString().slice(0, 10);
+      if (start > end) throw new AppError('La fecha inicial debe ser anterior a la fecha final.', 400);
+    }
     const admin = user.rol === 'SUPER_ADMIN' || user.permisos.includes('COHORTE_GESTIONAR');
     const grades = user.rol === 'SUPER_ADMIN' || user.permisos.includes('NOTA_IMPORTAR');
     if (!admin && !grades) throw new AppError('Se requiere permiso COHORTE_GESTIONAR o NOTA_IMPORTAR.', 403);
     return VirtualClassroomDAO.candidates({ from: start, to: end, programaId: query.programa_id,
-      cohorteId: query.cohorte_id, userId: user.id, teacherOnly: !admin && user.rol === 'DOCENTE' });
+      cohorteId: query.cohorte_id, estadoCohorte: query.estado_cohorte,
+      defaultOperationalStates: !hasLegacyDateFilter && query.estado_cohorte === undefined,
+      userId: user.id, teacherOnly: !admin && user.rol === 'DOCENTE' });
   }
 
   static async previewExport(scheduleIds: string[]) {

@@ -1,33 +1,35 @@
 import { pool, DbClient } from '../../db/pool';
 
 export class VirtualClassroomDAO {
-  static async candidates(filters: { from: string; to: string; programaId?: string; cohorteId?: string; userId: string; teacherOnly: boolean }) {
+  static async candidates(filters: { from?: string; to?: string; programaId?: string; cohorteId?: string; estadoCohorte?: string; defaultOperationalStates: boolean; userId: string; teacherOnly: boolean }) {
     const result = await pool.query(`
       SELECT DISTINCT p.id AS programa_id, p.nombre AS programa_nombre,
         c.id AS cohorte_id, c.codigo_cohorte,
         pcc.id AS schedule_id, cc.nombre AS componente_nombre, pcc.fecha_inicio, pcc.fecha_fin,
         pa.nombres || ' ' || pa.apellidos AS docente_nombre,
-        pcc.actas_notas_cerradas
+        pcc.actas_notas_cerradas,c.estado_cohorte
       FROM programacion_componentes_cohorte pcc
       JOIN cohortes_apertura c ON c.id=pcc.cohorte_id
       JOIN programas_academicos p ON p.id=c.programa_id
       JOIN componentes_curriculares cc ON cc.id=pcc.componente_id
       LEFT JOIN personal_academico pa ON pa.id=pcc.docente_titular_id
-      WHERE COALESCE(pcc.fecha_inicio,c.fecha_inicio_clases) BETWEEN $1::date AND $2::date
+      WHERE ($1::date IS NULL OR COALESCE(pcc.fecha_inicio,c.fecha_inicio_clases) BETWEEN $1::date AND $2::date)
         AND ($3::uuid IS NULL OR p.id=$3)
         AND ($4::uuid IS NULL OR c.id=$4)
-        AND (NOT $5::boolean OR pa.usuario_id=$6)
+        AND (($5::text IS NOT NULL AND c.estado_cohorte=$5) OR ($5::text IS NULL AND (NOT $6::boolean OR c.estado_cohorte IN ('INSCRIPCION_ABIERTA','QUORUM_ALCANZADO_COBRANDO','EN_EJECUCION'))))
+        AND (NOT $7::boolean OR pa.usuario_id=$8)
       ORDER BY p.nombre,c.codigo_cohorte,pcc.fecha_inicio,cc.nombre`,
-      [filters.from, filters.to, filters.programaId ?? null, filters.cohorteId ?? null, filters.teacherOnly, filters.userId]);
+      [filters.from ?? null, filters.to ?? null, filters.programaId ?? null, filters.cohorteId ?? null,
+        filters.estadoCohorte ?? null, filters.defaultOperationalStates, filters.teacherOnly, filters.userId]);
     const programs = new Map<string, { id: string; nombre: string }>();
-    const cohorts = new Map<string, { id: string; programa_id: string; codigo_cohorte: string }>();
+    const cohorts = new Map<string, { id: string; programa_id: string; codigo_cohorte: string; estado_cohorte: string }>();
     const schedules = result.rows.map(row => {
       programs.set(row.programa_id, { id: row.programa_id, nombre: row.programa_nombre });
-      cohorts.set(row.cohorte_id, { id: row.cohorte_id, programa_id: row.programa_id, codigo_cohorte: row.codigo_cohorte });
+      cohorts.set(row.cohorte_id, { id: row.cohorte_id, programa_id: row.programa_id, codigo_cohorte: row.codigo_cohorte, estado_cohorte: row.estado_cohorte });
       return { id: row.schedule_id, cohorte_id: row.cohorte_id, programa_id: row.programa_id,
         componente_nombre: row.componente_nombre, codigo_cohorte: row.codigo_cohorte,
         fecha_inicio: row.fecha_inicio, fecha_fin: row.fecha_fin, docente_nombre: row.docente_nombre,
-        actas_notas_cerradas: row.actas_notas_cerradas };
+        actas_notas_cerradas: row.actas_notas_cerradas, estado_cohorte: row.estado_cohorte };
     });
     return { programs: [...programs.values()], cohorts: [...cohorts.values()], schedules };
   }

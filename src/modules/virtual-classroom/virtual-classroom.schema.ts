@@ -6,6 +6,7 @@ export const candidatesQuerySchema = z.object({
   to: z.string().date().optional(),
   programa_id: uuid.optional(),
   cohorte_id: uuid.optional(),
+  estado_cohorte: z.enum(['PLANIFICADA','INSCRIPCION_ABIERTA','QUORUM_ALCANZADO_COBRANDO','EN_EJECUCION','FINALIZADA_PENDIENTE_EVAL','EVALUADA_SETEC','CANCELADA']).optional(),
 });
 export const exportPreviewSchema = z.object({ schedule_ids: z.array(uuid).min(1).max(100) });
 export const accountMappingSchema = z.object({ username: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9._@+-]+$/), verified: z.literal(true),

@@ -28,6 +28,7 @@ async function main() {
   try {
     const schema = await readFile(path.join(root,'database/schema.sql'),'utf8');
     const migration = await readFile(path.join(root,'database/migrations/20261029_virtual_classroom.sql'),'utf8');
+    const proposalsMigration = await readFile(path.join(root,'database/migrations/20261029_virtual_classroom_proposals.sql'),'utf8');
     docker(['run','--pull=never','--rm','-d','--name',container,'-e',`POSTGRES_PASSWORD=${password}`,
       '-e',`POSTGRES_DB=${database}`,'-p','127.0.0.1::5432','postgres:16-alpine']);
     created = true;
@@ -51,6 +52,7 @@ async function main() {
     assert.match(database,/^uncsm_test_vclass_[a-f0-9]{12}$/);
     await q(schema);
     await q(migration); await q(migration);
+    await q(proposalsMigration); await q(proposalsMigration);
     await q("INSERT INTO roles(nombre) VALUES ('SUPER_ADMIN') ON CONFLICT(nombre) DO NOTHING");
     const role = await one("SELECT id FROM roles WHERE nombre='SUPER_ADMIN'");
     const admin = await one("INSERT INTO usuarios(email,password_hash,nombres,apellidos,rol_id) VALUES ('admin@vclass.test','unused','Admin','Test',$1) RETURNING id",[role.id]);
@@ -94,6 +96,29 @@ async function main() {
     assert.match(exported,/lucia\.moodle,Lucía,Álvarez/);
     assert.equal((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count,1);
     checks.push('active-only roster consolidation produces one accented account row across two courses');
+
+    await q('DELETE FROM virtual_classroom_courses WHERE schedule_id=$1',[schedules[0].id]);
+    const proposedCourse = await VirtualClassroomService.previewExport([schedules[0].id]);
+    assert.equal(proposedCourse.courses[0].confirmed,false);
+    assert.equal(proposedCourse.courses[0].teacher_role,'editingteacher');
+    assert.equal(proposedCourse.people.find((person:any)=>person.kind==='teacher').courses[0].role,'editingteacher');
+    assert.match(proposedCourse.courses[0].shortname,/^VCLASS-0-VCLASS-[a-f0-9]{32}$/i);
+    await q("INSERT INTO virtual_classroom_courses(schedule_id,shortname,category,teacher_role,updated_by) VALUES($1,'VCLASS-0','Posgrados','editingteacher',$2)",[schedules[0].id,admin.id]);
+    checks.push('unsaved course proposals inherit sibling category and teacher role, retain readable UUID names, and align the teacher roster');
+
+    await VirtualClassroomService.configureAccount(`user:${linkedUser.id}`,{ username:'lucia.moodle',firstname:'Lucía revisada',lastname:'Álvarez Alumna',email:'lucia.export@vclass.test' },actor);
+    await VirtualClassroomService.configureAccount(`user:${linkedUser.id}`,{ username:'lucia.moodle' },actor);
+    await VirtualClassroomService.configureCourse(schedules[0].id,{shortname:'VCLASS-0',category:'1',teacher_role:'teacher',fullname:'Gestión Pública revisada',summary:'Resumen de prueba' },actor);
+    await VirtualClassroomService.configureCourse(schedules[0].id,{shortname:'VCLASS-0',category:'1',teacher_role:'teacher' },actor);
+    const reviewedPreview = await VirtualClassroomService.previewExport([schedules[0].id]);
+    assert.equal(reviewedPreview.courses[0].confirmed,true);
+    assert.equal(reviewedPreview.courses[0].fullname,'Gestión Pública revisada');
+    const reviewedStudent = reviewedPreview.people.find((person:any)=>person.person_key===`user:${linkedUser.id}`);
+    assert.equal(reviewedStudent.firstname,'Lucía revisada');
+    assert.equal(reviewedStudent.email,'lucia.export@vclass.test');
+    const reviewedExport = await VirtualClassroomService.createExport([schedules[0].id],'users_csv',actor);
+    assert.match(reviewedExport.content.toString('utf8'),/lucia\.moodle,Lucía revisada,Álvarez Alumna,lucia\.export@vclass\.test/);
+    checks.push('saved account and course overrides survive omitted-field updates and are used in preview and generated exports');
 
     await q("UPDATE programacion_componentes_cohorte SET codigo_aula_virtual_externa='VCLASS-0' WHERE id=$1",[schedules[1].id]);
     const legacyPreview = await VirtualClassroomService.previewExport([schedules[0].id]);

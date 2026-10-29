@@ -61,3 +61,78 @@ test('CSV parsing preserves distinct numeric-looking Moodle usernames as text', 
   assert.deepEqual(result.rows.map(row => row.username),['00123','123']);
   assert.equal(state.snapshotCalls,1);
 });
+
+test('export preview proposes stable course and account values without confirming them', async () => {
+  const schedule = { schedule_id:scheduleId,shortname:null,codigo_aula_virtual_externa:null,
+    category:null,teacher_role:null,fullname:null,summary:null,componente_codigo:'VCLASS',programa_id:'00000000-0000-4000-8000-000000000021',
+    cohorte_id:'00000000-0000-4000-8000-000000000022',componente_id:'00000000-0000-4000-8000-000000000023',
+    componente_nombre:'Gestión Pública',codigo_cohorte:'PEP-1',programa_nombre:'Posgrados',fecha_inicio:'2026-11-01',
+    fecha_fin:'2026-11-30',teacher_id:'00000000-0000-4000-8000-000000000024',teacher_firstname:'Ana',
+    teacher_lastname:'Pérez',teacher_user_id:null,teacher_suggested_username:null,teacher_email:'ana@example.test' };
+  mock.method(VirtualClassroomDAO,'exportContext',async () => ({ rows:[schedule] } as any));
+  mock.method(VirtualClassroomDAO,'courseCodeOwners',async () => ({ rows:[{schedule_id:'00000000-0000-4000-8000-000000000099',
+    code:`pep-1-vclass-${scheduleId.replaceAll('-','')}`}] } as any));
+  mock.method(VirtualClassroomDAO,'proposalDefaults',async () => ({ rows:[{schedule_id:scheduleId,category:'1',teacher_role:'editingteacher'}] } as any));
+  mock.method(VirtualClassroomDAO,'exportPeople',async () => ({ rows:[
+    { schedule_id:scheduleId,person_key:'teacher:00000000-0000-4000-8000-000000000024',firstname:'Ana',lastname:'Pérez',email:'ana@example.test',suggested_username:null,username:null,verified:false,kind:'teacher',role:'teacher' },
+    { schedule_id:scheduleId,person_key:'user:00000000-0000-4000-8000-000000000026',firstname:'Linked',lastname:'Learner',email:'emailname@example.test',suggested_username:'linked.account',username:null,verified:false,kind:'student',role:'student' },
+    { schedule_id:scheduleId,person_key:'applicant:00000000-0000-4000-8000-000000000025',firstname:'Otra',lastname:'Persona',email:'ana@example.test',suggested_username:null,username:null,verified:false,kind:'student',role:'student' },
+  ] } as any));
+  mock.method(VirtualClassroomDAO,'usernameOwners',async () => ({ rows:[{username:'ana',person_key:'teacher:00000000-0000-4000-8000-000000000024'}] } as any));
+  const first = await VirtualClassroomService.previewExport([scheduleId]);
+  const second = await VirtualClassroomService.previewExport([scheduleId]);
+  assert.equal(first.courses[0].shortname,`PEP-1-VCLASS-${scheduleId.replaceAll('-','')}-1`);
+  assert.equal(first.courses[0].category,'1');
+  assert.equal(first.courses[0].teacher_role,'editingteacher');
+  assert.equal(first.courses[0].confirmed,false);
+  assert.equal(first.people[0].username,'ana');
+  assert.equal(first.people[0].verified,false);
+  assert.equal(first.people[0].username,second.people[0].username);
+  assert.equal(first.people[0].courses[0].role,'editingteacher');
+  assert.equal(first.people[1].username,'linked.account');
+  assert.equal(first.people[1].verified,false);
+  assert.equal(first.people[2].username,'pep.applicant.00000000000040008000000000000025');
+  assert.equal(first.people[2].username,second.people[2].username);
+});
+
+test('configured account and course overrides remain authoritative in preview and exports', async () => {
+  const schedule = { schedule_id:scheduleId,shortname:'PEP-1',codigo_aula_virtual_externa:'PEP-1',category:'1',teacher_role:'teacher',
+    course_mapping_id:'course-map',
+    fullname_override:'Nombre revisado',summary_override:'Resumen revisado',programa_id:'00000000-0000-4000-8000-000000000021',
+    programa_nombre:'Posgrados',fecha_inicio:'2026-11-01',fecha_fin:'2026-11-30',teacher_id:'00000000-0000-4000-8000-000000000024' };
+  mock.method(VirtualClassroomDAO,'exportContext',async () => ({ rows:[schedule] } as any));
+  mock.method(VirtualClassroomDAO,'courseCodeOwners',async () => ({ rows:[{schedule_id:scheduleId,code:'pep-1'}] } as any));
+  mock.method(VirtualClassroomDAO,'proposalDefaults',async () => ({ rows:[{category:'1',teacher_role:'teacher'}] } as any));
+  mock.method(VirtualClassroomDAO,'exportPeople',async () => ({ rows:[
+    { schedule_id:scheduleId,person_key:'user:00000000-0000-4000-8000-000000000031',firstname:'Canonical',lastname:'Name',email:'canonical@example.test',
+      suggested_username:'canonical.user',username:'edited.user',verified:true,firstname_override:'Edited',lastname_override:'Learner',email_override:'edited@example.test',kind:'student',role:'student' },
+  ] } as any));
+  mock.method(VirtualClassroomDAO,'usernameOwners',async () => ({ rows:[{ username:'edited.user',person_key:'user:00000000-0000-4000-8000-000000000031' }] } as any));
+  const preview = await VirtualClassroomService.previewExport([scheduleId]);
+  assert.equal(preview.courses[0].fullname,'Nombre revisado');
+  assert.equal(preview.courses[0].summary,'Resumen revisado');
+  assert.equal(preview.courses[0].confirmed,true);
+  assert.deepEqual([preview.people[0].firstname,preview.people[0].lastname,preview.people[0].email],
+    ['Edited','Learner','edited@example.test']);
+  mock.method(VirtualClassroomDAO,'saveExport',async (input: any) => ({ rows:[{id:'export'}],input } as any));
+  const result = await VirtualClassroomService.createExport([scheduleId],'users_csv',actor);
+  assert.match(result.content.toString('utf8'),/edited\.user,Edited,Learner,edited@example\.test/);
+  const courseExport = await VirtualClassroomService.createExport([scheduleId],'courses_csv',actor);
+  assert.match(courseExport.content.toString('utf8'),/PEP-1,Nombre revisado,Resumen revisado,1/);
+});
+
+test('a conflicting saved username remains visible and blocks export instead of being replaced', async () => {
+  mock.method(VirtualClassroomDAO,'exportContext',async () => ({ rows:[{ schedule_id:scheduleId,shortname:'PEP-1',codigo_aula_virtual_externa:'PEP-1',
+    category:'1',teacher_role:'teacher',course_mapping_id:'course-map',componente_nombre:'Gestión Pública',codigo_cohorte:'PEP-1',
+    programa_nombre:'Posgrados',teacher_id:'00000000-0000-4000-8000-000000000024' }] } as any));
+  mock.method(VirtualClassroomDAO,'courseCodeOwners',async () => ({ rows:[{schedule_id:scheduleId,code:'pep-1'}] } as any));
+  mock.method(VirtualClassroomDAO,'proposalDefaults',async () => ({ rows:[] } as any));
+  mock.method(VirtualClassroomDAO,'exportPeople',async () => ({ rows:[{ schedule_id:scheduleId,
+    person_key:'user:00000000-0000-4000-8000-000000000031',firstname:'Learner',lastname:'Person',email:'learner@example.test',
+    suggested_username:'web.learner',username:'taken.name',verified:true,kind:'student',role:'student' }] } as any));
+  mock.method(VirtualClassroomDAO,'usernameOwners',async () => ({ rows:[{ username:'taken.name',person_key:'user:00000000-0000-4000-8000-000000000032' }] } as any));
+  const preview = await VirtualClassroomService.previewExport([scheduleId]);
+  assert.equal(preview.people[0].username,'taken.name');
+  assert.ok(preview.issues.some(issue=>issue.code==='USERNAME_CONFLICT'));
+  await assert.rejects(VirtualClassroomService.createExport([scheduleId],'users_csv',actor),/Resuelva los problemas/);
+});

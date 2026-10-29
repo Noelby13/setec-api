@@ -711,6 +711,9 @@ CREATE TABLE virtual_classroom_accounts (
     person_id UUID NOT NULL,
     username VARCHAR(100) NOT NULL UNIQUE CHECK (length(btrim(username)) > 0),
     verified BOOLEAN NOT NULL DEFAULT FALSE,
+    firstname VARCHAR(120),
+    lastname VARCHAR(120),
+    email VARCHAR(254),
     updated_by UUID NOT NULL REFERENCES usuarios(id),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(person_type,person_id)
@@ -721,6 +724,8 @@ CREATE TABLE virtual_classroom_courses (
     shortname VARCHAR(100) NOT NULL UNIQUE CHECK (length(btrim(shortname)) > 0),
     category VARCHAR(120) NOT NULL CHECK (length(btrim(category)) > 0),
     teacher_role VARCHAR(60) NOT NULL CHECK (length(btrim(teacher_role)) > 0),
+    fullname VARCHAR(254),
+    summary TEXT,
     updated_by UUID NOT NULL REFERENCES usuarios(id),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

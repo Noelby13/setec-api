@@ -36,12 +36,12 @@ export class VirtualClassroomDAO {
     return db.query(`
       SELECT pcc.id AS schedule_id,pcc.cohorte_id,pcc.componente_id,pcc.fecha_inicio,pcc.fecha_fin,
         pcc.actas_notas_cerradas,cc.nombre AS componente_nombre,cc.codigo AS componente_codigo,
-        c.codigo_cohorte,p.nombre AS programa_nombre,
+        c.codigo_cohorte,p.id AS programa_id,p.nombre AS programa_nombre,
         pcc.codigo_aula_virtual_externa,
-        cm.shortname,cm.category,cm.teacher_role,
+        cm.id AS course_mapping_id,cm.shortname,cm.category,cm.teacher_role,cm.fullname AS fullname_override,cm.summary AS summary_override,
         pa.id AS teacher_id,pa.nombres AS teacher_firstname,pa.apellidos AS teacher_lastname,
         pa.usuario_id AS teacher_user_id,tu.username AS teacher_suggested_username,tu.email AS teacher_email,
-        cm.shortname AS mapped_shortname,cm.id AS course_mapping_id
+        cm.shortname AS mapped_shortname
       FROM programacion_componentes_cohorte pcc
       JOIN cohortes_apertura c ON c.id=pcc.cohorte_id
       JOIN programas_academicos p ON p.id=c.programa_id
@@ -50,6 +50,22 @@ export class VirtualClassroomDAO {
       LEFT JOIN personal_academico pa ON pa.id=pcc.docente_titular_id
       LEFT JOIN usuarios tu ON tu.id=pa.usuario_id
       WHERE pcc.id=ANY($1::uuid[]) ORDER BY c.codigo_cohorte,cc.nombre`, [scheduleIds]);
+  }
+
+  static async proposalDefaults(scheduleIds: string[]) {
+    return pool.query(`SELECT requested.schedule_id,
+        COALESCE(latest.category,'1') AS category,COALESCE(latest.teacher_role,'teacher') AS teacher_role
+      FROM unnest($1::uuid[]) AS requested(schedule_id)
+      JOIN programacion_componentes_cohorte pcc ON pcc.id=requested.schedule_id
+      JOIN cohortes_apertura c ON c.id=pcc.cohorte_id
+      LEFT JOIN LATERAL (
+        SELECT vc.category,vc.teacher_role
+        FROM virtual_classroom_courses vc
+        JOIN programacion_componentes_cohorte mapped ON mapped.id=vc.schedule_id
+        JOIN cohortes_apertura mapped_cohort ON mapped_cohort.id=mapped.cohorte_id
+        WHERE mapped_cohort.programa_id=c.programa_id
+        ORDER BY vc.updated_at DESC,vc.id DESC LIMIT 1
+      ) latest ON TRUE`,[scheduleIds]);
   }
 
   static async courseCodeOwners(codes: string[]) {
@@ -68,9 +84,9 @@ export class VirtualClassroomDAO {
   static async exportPeople(scheduleIds: string[], db: DbClient = pool) {
     return db.query(`
       SELECT pcc.id AS schedule_id, CASE WHEN pa.usuario_id IS NULL THEN 'applicant:' || pa.id::text ELSE 'user:' || pa.usuario_id::text END AS person_key,
-        pa.nombres AS firstname,pa.apellidos AS lastname,pa.email,
+        pa.nombres AS firstname,pa.apellidos AS lastname,COALESCE(NULLIF(pa.email,''),NULLIF(u.email,'')) AS email,
         u.username AS suggested_username,
-        vm.username,vm.verified,
+        vm.username,vm.verified,vm.firstname AS firstname_override,vm.lastname AS lastname_override,vm.email AS email_override,
         'student'::text AS kind,'student'::text AS role
       FROM programacion_componentes_cohorte pcc
       JOIN inscripciones i ON i.cohorte_id=pcc.cohorte_id AND i.estado='MATRICULADO_ACTIVO'
@@ -81,7 +97,7 @@ export class VirtualClassroomDAO {
       WHERE pcc.id=ANY($1::uuid[])
       UNION ALL
       SELECT pcc.id, CASE WHEN pa.usuario_id IS NULL THEN 'teacher:' || pa.id::text ELSE 'user:' || pa.usuario_id::text END, pa.nombres,pa.apellidos,u.email,u.username,
-        vm.username,vm.verified,'teacher'::text,COALESCE(cm.teacher_role,'teacher')
+        vm.username,vm.verified,vm.firstname,vm.lastname,vm.email,'teacher'::text,COALESCE(cm.teacher_role,'teacher')
       FROM programacion_componentes_cohorte pcc
       JOIN personal_academico pa ON pa.id=pcc.docente_titular_id
       LEFT JOIN usuarios u ON u.id=pa.usuario_id
@@ -89,6 +105,23 @@ export class VirtualClassroomDAO {
         AND vm.person_id=COALESCE(pa.usuario_id,pa.id)
       LEFT JOIN virtual_classroom_courses cm ON cm.schedule_id=pcc.id
       WHERE pcc.id=ANY($1::uuid[]) ORDER BY person_key,schedule_id`, [scheduleIds]);
+  }
+
+  static async usernameOwners(candidates: string[]) {
+    const normalized = [...new Set(candidates.map(username => String(username ?? '').trim().toLowerCase()).filter(Boolean))];
+    if (!normalized.length) return { rows: [] as any[] };
+    return pool.query(`SELECT lower(vm.username) AS username,
+        CASE WHEN vm.person_type='user' THEN 'user:' || vm.person_id::text
+          WHEN vm.person_type='applicant' AND pa.usuario_id IS NOT NULL THEN 'user:' || pa.usuario_id::text
+          WHEN vm.person_type='teacher' AND staff.usuario_id IS NOT NULL THEN 'user:' || staff.usuario_id::text
+          ELSE vm.person_type || ':' || vm.person_id::text END AS person_key
+      FROM virtual_classroom_accounts vm
+      LEFT JOIN personas_aspirantes pa ON vm.person_type='applicant' AND pa.id=vm.person_id
+      LEFT JOIN personal_academico staff ON vm.person_type='teacher' AND staff.id=vm.person_id
+      WHERE lower(vm.username)=ANY($1::text[])
+      UNION ALL
+      SELECT lower(u.username), 'user:' || u.id::text
+      FROM usuarios u WHERE NULLIF(btrim(u.username),'') IS NOT NULL AND lower(u.username)=ANY($1::text[])`,[normalized]);
   }
 
   static async saveExport(input: { actorId: string; format: string; filename: string; contentType: string; content: Uint8Array; snapshot: unknown }) {
@@ -110,18 +143,23 @@ export class VirtualClassroomDAO {
     return pool.query('SELECT username,verified FROM virtual_classroom_accounts WHERE person_type=$1 AND person_id=$2', [personType, personId]);
   }
 
-  static async upsertAccount(personType: string, personId: string, username: string, actorId: string) {
-    return pool.query(`INSERT INTO virtual_classroom_accounts(person_type,person_id,username,verified,updated_by,updated_at)
-      VALUES($1,$2,$3,TRUE,$4,NOW()) ON CONFLICT(person_type,person_id) DO UPDATE
-      SET username=EXCLUDED.username,verified=TRUE,updated_by=EXCLUDED.updated_by,updated_at=NOW()
-      RETURNING person_type,person_id,username,verified`, [personType,personId,username,actorId]);
+  static async upsertAccount(personType: string, personId: string, config: { username: string; firstname?: string; lastname?: string; email?: string }, actorId: string) {
+    return pool.query(`INSERT INTO virtual_classroom_accounts(person_type,person_id,username,verified,firstname,lastname,email,updated_by,updated_at)
+      VALUES($1,$2,$3,TRUE,$4,$5,$6,$7,NOW()) ON CONFLICT(person_type,person_id) DO UPDATE
+      SET username=EXCLUDED.username,verified=TRUE,firstname=COALESCE(EXCLUDED.firstname,virtual_classroom_accounts.firstname),
+        lastname=COALESCE(EXCLUDED.lastname,virtual_classroom_accounts.lastname),email=COALESCE(EXCLUDED.email,virtual_classroom_accounts.email),
+        updated_by=EXCLUDED.updated_by,updated_at=NOW()
+      RETURNING person_type,person_id,username,verified,firstname,lastname,email`,
+    [personType,personId,config.username,config.firstname ?? null,config.lastname ?? null,config.email ?? null,actorId]);
   }
 
-  static async upsertCourse(scheduleId: string, config: { shortname: string; category: string; teacher_role: string }, actorId: string) {
-    return pool.query(`INSERT INTO virtual_classroom_courses(schedule_id,shortname,category,teacher_role,updated_by,updated_at)
-      VALUES($1,$2,$3,$4,$5,NOW()) ON CONFLICT(schedule_id) DO UPDATE SET shortname=EXCLUDED.shortname,
-      category=EXCLUDED.category,teacher_role=EXCLUDED.teacher_role,updated_by=EXCLUDED.updated_by,updated_at=NOW()
-      RETURNING *`, [scheduleId,config.shortname,config.category,config.teacher_role,actorId]);
+  static async upsertCourse(scheduleId: string, config: { shortname: string; category: string; teacher_role: string; fullname?: string; summary?: string }, actorId: string) {
+    return pool.query(`INSERT INTO virtual_classroom_courses(schedule_id,shortname,category,teacher_role,fullname,summary,updated_by,updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,NOW()) ON CONFLICT(schedule_id) DO UPDATE SET shortname=EXCLUDED.shortname,
+      category=EXCLUDED.category,teacher_role=EXCLUDED.teacher_role,
+      fullname=COALESCE(EXCLUDED.fullname,virtual_classroom_courses.fullname),summary=COALESCE(EXCLUDED.summary,virtual_classroom_courses.summary),
+      updated_by=EXCLUDED.updated_by,updated_at=NOW()
+      RETURNING *`, [scheduleId,config.shortname,config.category,config.teacher_role,config.fullname ?? null,config.summary ?? null,actorId]);
   }
 
   static async schedule(scheduleId: string, db: DbClient = pool) {

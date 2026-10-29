@@ -19,6 +19,25 @@ function csv(rows: unknown[][]): Buffer {
   return Buffer.from(`\uFEFF${rows.map(row => row.map(csvCell).join(',')).join('\r\n')}\r\n`, 'utf8');
 }
 
+function opaqueUsernames(personKey: string) {
+  const [type,id] = personKey.split(':');
+  const base = `pep.${type}.${String(id ?? '').replaceAll('-','')}`;
+  return [base,...Array.from({length:10},(_,index)=>`${base}.${index + 1}`)];
+}
+
+function emailUsername(email: unknown) {
+  return String(email ?? '').trim().split('@')[0]?.normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9._+-]/g,'').toLowerCase() ?? '';
+}
+
+function proposedCourseCodes(schedule: any) {
+  const scheduleSuffix = String(schedule.schedule_id).replaceAll('-','');
+  const readable = `${schedule.codigo_cohorte ?? ''}-${schedule.componente_codigo ?? ''}`.normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9._-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60) || 'course';
+  const base = `${readable}-${scheduleSuffix}`;
+  return [base,...Array.from({length:10},(_,index)=>`${base}-${index + 1}`)];
+}
+
 function validatedScheduleIds(ids: string[], rows: any[]) {
   if (rows.length !== ids.length) throw new AppError('Una o más programaciones no existen o no son accesibles.', 404);
   return rows;
@@ -50,20 +69,32 @@ export class VirtualClassroomService {
 
   static async previewExport(scheduleIds: string[]) {
     const schedules = validatedScheduleIds(scheduleIds, (await VirtualClassroomDAO.exportContext(scheduleIds)).rows);
-    const codes = schedules.map(schedule => String(schedule.shortname ?? schedule.codigo_aula_virtual_externa ?? '').trim()).filter(Boolean);
+    const defaults = new Map<string, any>((await VirtualClassroomDAO.proposalDefaults(scheduleIds)).rows.map((row: any) => [row.schedule_id,row]));
+    const generatedCodes = new Map<string,string[]>();
+    for (const schedule of schedules) {
+      if (schedule.shortname || schedule.codigo_aula_virtual_externa) continue;
+      generatedCodes.set(schedule.schedule_id,proposedCourseCodes(schedule));
+    }
+    const codes = [...schedules.map(schedule => String(schedule.shortname ?? schedule.codigo_aula_virtual_externa ?? '').trim()).filter(Boolean),
+      ...[...generatedCodes.values()].flat()];
     const codeOwners = (await VirtualClassroomDAO.courseCodeOwners(codes)).rows;
     const peopleResult = await VirtualClassroomDAO.exportPeople(scheduleIds);
+    const usernamesToCheck = peopleResult.rows.flatMap((source: any) => [source.username,source.suggested_username,
+      emailUsername(source.email_override || source.email),...opaqueUsernames(source.person_key)]);
+    const usernameOwners = (await VirtualClassroomDAO.usernameOwners(usernamesToCheck)).rows;
     const people = new Map<string, any>();
     const issues: { code: string; message: string; person_key?: string; schedule_id?: string }[] = [];
     const courses = schedules.map(schedule => {
       const legacyCode = String(schedule.codigo_aula_virtual_externa ?? '').trim();
       const mappedCode = String(schedule.shortname ?? '').trim();
-      const shortname = mappedCode || legacyCode;
-      const category = schedule.category ?? '';
-      const teacherRole = schedule.teacher_role ?? '';
-      const fullname = `${schedule.componente_nombre} - ${schedule.codigo_cohorte}`;
-      const summary = `${schedule.programa_nombre}; ${schedule.fecha_inicio ?? ''} a ${schedule.fecha_fin ?? ''}`;
-      if (!shortname || !category || !teacherRole) issues.push({ code: 'COURSE_CONFIGURATION_MISSING', message: 'Configure shortname, categoría y rol docente del curso.', schedule_id: schedule.schedule_id });
+      const fallbackCodes = generatedCodes.get(schedule.schedule_id) ?? [];
+      const candidateCode = fallbackCodes.find(code => !codeOwners.some((owner: any) => owner.code === code.toLowerCase() && owner.schedule_id !== schedule.schedule_id));
+      const shortname = mappedCode || legacyCode || candidateCode || fallbackCodes[0] || `pep.${String(schedule.schedule_id).replaceAll('-','')}`;
+      const category = schedule.category || defaults.get(schedule.schedule_id)?.category || '1';
+      const teacherRole = schedule.teacher_role || defaults.get(schedule.schedule_id)?.teacher_role || 'teacher';
+      const fullname = schedule.fullname_override || `${schedule.componente_nombre} - ${schedule.codigo_cohorte}`;
+      const summary = schedule.summary_override || `${schedule.programa_nombre}; ${schedule.fecha_inicio ?? ''} a ${schedule.fecha_fin ?? ''}`;
+      if (!schedule.course_mapping_id) issues.push({ code:'COURSE_CONFIRMATION_REQUIRED',message:'Revise y guarde la propuesta del curso antes de generar.',schedule_id:schedule.schedule_id });
       if (!schedule.teacher_id) issues.push({ code: 'TEACHER_REQUIRED', message: 'La programación requiere un docente asignado.', schedule_id: schedule.schedule_id });
       if (legacyCode && mappedCode && legacyCode.toLowerCase() !== mappedCode.toLowerCase()) {
         issues.push({ code:'LEGACY_COURSE_CODE_MISMATCH',message:'El shortname configurado no coincide con el código de aula virtual existente.',schedule_id:schedule.schedule_id });
@@ -73,25 +104,46 @@ export class VirtualClassroomService {
         issues.push({ code:'LEGACY_COURSE_CODE_CONFLICT',message:'El código Moodle ya pertenece a otra programación.',schedule_id:schedule.schedule_id });
       }
       return { schedule_id: schedule.schedule_id, shortname, fullname, summary, category, teacher_role: teacherRole,
+        confirmed:Boolean(schedule.course_mapping_id),
         fecha_inicio: schedule.fecha_inicio, fecha_fin: schedule.fecha_fin };
     });
+    const reservedUsernames = new Set<string>();
     for (const source of peopleResult.rows) {
-      const person = people.get(source.person_key) ?? {
-        person_key: source.person_key, firstname: source.firstname, lastname: source.lastname, email: source.email ?? '',
-        username: source.verified ? source.username : '', suggested_username: source.suggested_username ?? '',
+      const existingPerson = people.get(source.person_key);
+      const fallbackUsernames = opaqueUsernames(source.person_key);
+      const fallbackUsername = fallbackUsernames[0];
+      const emailLocalPart = emailUsername(source.email_override || source.email);
+      const proposed = String(source.username || source.suggested_username || emailLocalPart || fallbackUsername).trim();
+      const candidate = /^[A-Za-z0-9._@+-]{1,100}$/.test(proposed) ? proposed : fallbackUsername;
+      const lowerCandidate = candidate.toLowerCase();
+      const savedUsernameInvalid = Boolean(source.username) && !/^[A-Za-z0-9._@+-]{1,100}$/.test(String(source.username).trim());
+      const collides = !existingPerson && (usernameOwners.some((owner: any) => owner.username === lowerCandidate && owner.person_key !== source.person_key)
+        || reservedUsernames.has(lowerCandidate));
+      const savedUsernameConflict = Boolean(source.username) && collides;
+      const availableFallback = fallbackUsernames.find(fallback => !usernameOwners.some((owner: any) => owner.username === fallback.toLowerCase() && owner.person_key !== source.person_key)
+        && !reservedUsernames.has(fallback.toLowerCase()));
+      const username = existingPerson?.username ?? (source.username ? String(source.username).trim() : collides ? (availableFallback ?? '') : candidate);
+      if (!existingPerson && username) reservedUsernames.add(username.toLowerCase());
+      const person = existingPerson ?? {
+        person_key: source.person_key, firstname: source.firstname_override || source.firstname,
+        lastname: source.lastname_override || source.lastname, email: source.email_override || source.email || '',
+        username, suggested_username: source.suggested_username ?? '',
         verified: Boolean(source.verified), kind: source.kind, courses: [],
       };
       if (!person.firstname?.trim() || !person.lastname?.trim() || !person.email?.trim()) {
         issues.push({ code: 'PERSON_DATA_MISSING', message: 'La persona requiere nombres, apellidos y correo.', person_key: source.person_key, schedule_id: source.schedule_id });
       }
-      if (!source.verified || !source.username) {
+      if (!source.verified || !source.username || savedUsernameInvalid || savedUsernameConflict || !username) {
         issues.push({ code: 'ACCOUNT_LINK_REQUIRED', message: 'Complete y verifique la vinculación Moodle antes de generar.', person_key: source.person_key, schedule_id: source.schedule_id });
       }
-      if (!source.email?.trim()) {
+      if (!person.email?.trim()) {
         issues.push({ code: 'EMAIL_REQUIRED', message: 'La cuenta Moodle requiere correo electrónico.', person_key: source.person_key, schedule_id: source.schedule_id });
       }
+      if (savedUsernameInvalid) issues.push({code:'USERNAME_INVALID',message:'El username Moodle guardado no tiene un formato válido.',person_key:source.person_key,schedule_id:source.schedule_id});
+      if (savedUsernameConflict || !username) issues.push({code:'USERNAME_CONFLICT',message:'El username configurado pertenece a otra persona; indique una cuenta Moodle única.',person_key:source.person_key,schedule_id:source.schedule_id});
       const course = courses.find(item => item.schedule_id === source.schedule_id)!;
-      person.courses.push({ schedule_id: source.schedule_id, shortname: course.shortname, role: source.role });
+      person.courses.push({ schedule_id: source.schedule_id, shortname: course.shortname,
+        role: source.kind === 'teacher' ? course.teacher_role : source.role });
       people.set(source.person_key, person);
     }
     const seen = new Set<string>();
@@ -102,7 +154,7 @@ export class VirtualClassroomService {
     return { courses, people: [...people.values()], issues };
   }
 
-  static async configureAccount(personKey: string, username: string, actor: AuthUserPayload) {
+  static async configureAccount(personKey: string, config: { username: string; firstname?: string; lastname?: string; email?: string }, actor: AuthUserPayload) {
     const [personType, personId, extra] = personKey.split(':');
     if (!['user','applicant','teacher'].includes(personType) || !/^[0-9a-f-]{36}$/i.test(personId ?? '') || extra) throw new AppError('La persona indicada no es válida.', 400);
     const relation = personType === 'user' ? 'usuarios' : personType === 'applicant' ? 'personas_aspirantes' : 'personal_academico';
@@ -112,10 +164,10 @@ export class VirtualClassroomService {
       : pool.query(`SELECT id,usuario_id FROM ${relation} WHERE id=$1`,[personId]));
     if (!found.rows.length) throw new AppError('La persona indicada no existe.', 404);
     if (personType !== 'user' && found.rows[0].usuario_id) throw new AppError(`Use user:${found.rows[0].usuario_id} para mantener la identidad vinculada.`,400);
-    return (await VirtualClassroomDAO.upsertAccount(personType,personId,username,actor.id)).rows[0];
+    return (await VirtualClassroomDAO.upsertAccount(personType,personId,config,actor.id)).rows[0];
   }
 
-  static async configureCourse(scheduleId: string, config: { shortname: string; category: string; teacher_role: string }, actor: AuthUserPayload) {
+  static async configureCourse(scheduleId: string, config: { shortname: string; category: string; teacher_role: string; fullname?: string; summary?: string }, actor: AuthUserPayload) {
     const schedule = (await VirtualClassroomDAO.schedule(scheduleId)).rows[0];
     if (!schedule) throw new AppError('Programación de componente no encontrada.', 404);
     const legacyCode = String(schedule.codigo_aula_virtual_externa ?? '').trim();

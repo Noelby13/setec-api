@@ -1,0 +1,8 @@
+ALTER TABLE virtual_classroom_accounts
+  ADD COLUMN IF NOT EXISTS firstname VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS lastname VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS email VARCHAR(254);
+
+ALTER TABLE virtual_classroom_courses
+  ADD COLUMN IF NOT EXISTS fullname VARCHAR(254),
+  ADD COLUMN IF NOT EXISTS summary TEXT;

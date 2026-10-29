@@ -19,7 +19,7 @@ export class VirtualClassroomController {
   }
 
   static async configureAccount(req: Request,res: Response,next: NextFunction) {
-    try { res.json({ data: await VirtualClassroomService.configureAccount(String(req.params.personKey),req.body.username,actor(req)) }); }
+    try { res.json({ data: await VirtualClassroomService.configureAccount(String(req.params.personKey),req.body,actor(req)) }); }
     catch (error) { next(error); }
   }
 

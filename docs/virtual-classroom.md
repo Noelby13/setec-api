@@ -19,14 +19,24 @@ Content-Type: application/json
 {"shortname":"PEP01-GESTION-PUBLICA","category":"Posgrados","teacher_role":"editingteacher"}
 ```
 
-Configure an existing person-to-account link explicitly. Linked people use `user:{userId}` as the stable key; an unlinked applicant or teacher uses `applicant:{personId}` or `teacher:{personId}`. A linked application username is shown only as a suggestion until an administrator confirms it.
+Review the generated proposal before saving. The API proposes a readable, sanitized cohort-component shortname with the complete schedule UUID as a stable uniqueness suffix when no legacy or saved code exists. It proposes the latest configured category and teacher role for the same program; when none exists, `1` and `teacher` are editable defaults, not evidence that those values exist in Moodle. Preview returns `confirmed: false` until the course mapping is saved. Full name and summary can be edited with optional `fullname` and `summary` fields:
+
+```json
+{"shortname":"pep.00000000000040008000000000000001","category":"1","teacher_role":"teacher","fullname":"Gestión Pública - PEP-1","summary":"Posgrados; 2026-11-01 a 2026-11-30"}
+```
+
+The `fullname` and `summary` fields are optional and omitted values preserve previously saved overrides.
+
+Configure an existing person-to-account link explicitly. Linked people use `user:{userId}` as the stable key; an unlinked applicant or teacher uses `applicant:{personId}` or `teacher:{personId}`. Preview suggests an existing saved Moodle username first, then a normalized email local part when available, and finally a stable opaque candidate. These suggestions do not verify an account or prove its existence in Moodle. Preview keeps `verified: false` until an administrator explicitly saves the link. Email falls back to the linked application user's email when the person record has none.
 
 ```http
 PUT /api/virtual-classroom/accounts/applicant:{personId}
 Content-Type: application/json
 
-{"username":"ana.perez","verified":true}
+{"username":"ana.perez","verified":true,"firstname":"Ana","lastname":"Pérez","email":"ana.perez@example.test"}
 ```
+
+The optional account name and email fields let the administrator review Moodle export values without changing the underlying SNEPA person record. Omitted values preserve previously saved Moodle overrides; values saved here take precedence in preview and generated files.
 
 Only `COHORTE_GESTIONAR` may edit mappings and generate files. Usernames and course shortnames are unique in the database. If an older schedule already has `codigo_aula_virtual_externa`, keep that value as the course shortname; the preview and mapping save check ownership across all schedules, including schedules outside the selected export. A code already owned by another schedule blocks both saving and export.
 

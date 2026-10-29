@@ -8,11 +8,15 @@ export const candidatesQuerySchema = z.object({
   cohorte_id: uuid.optional(),
 });
 export const exportPreviewSchema = z.object({ schedule_ids: z.array(uuid).min(1).max(100) });
-export const accountMappingSchema = z.object({ username: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9._@+-]+$/), verified: z.literal(true) });
+export const accountMappingSchema = z.object({ username: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9._@+-]+$/), verified: z.literal(true),
+  firstname: z.string().trim().min(1).max(120).optional(), lastname: z.string().trim().min(1).max(120).optional(),
+  email: z.email().max(254).optional() });
 export const courseMappingSchema = z.object({
   shortname: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9._-]+$/),
   category: z.string().trim().min(1).max(120),
   teacher_role: z.string().trim().min(1).max(60),
+  fullname: z.string().trim().min(1).max(254).optional(),
+  summary: z.string().trim().min(1).max(65535).optional(),
 });
 export const exportSchema = z.object({ schedule_ids: z.array(uuid).min(1).max(100), format: z.enum(['xlsx', 'users_csv', 'courses_csv']) });
 export const scheduleParamSchema = z.object({ programacionComponenteId: uuid });

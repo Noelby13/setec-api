@@ -44,7 +44,6 @@
     "native_receipt": "unavailable: gentle-ai executable not installed"
   },
   "pending": [
-    "Apply migration to the explicitly selected real installation",
     "Validate a small course/user/final-grade exchange with Moodle administrator",
     "Engram mirror unavailable"
   ],
@@ -54,5 +53,20 @@
     4
   ],
   "remote_operations": false,
-  "production_database_mutated": false
+  "local_migration_repair": {
+    "date": "2026-10-29",
+    "reported_error": "relation \"virtual_classroom_exports\" does not exist",
+    "migration": "20261029_virtual_classroom.sql",
+    "transaction": "committed",
+    "configured_local_database_schema_updated": true,
+    "business_rows_modified": false,
+    "independent_read_only_verification": "PASS",
+    "tables_present": 4,
+    "constraints_verified": 20,
+    "declared_indexes_valid": 4,
+    "history_query": "PASS",
+    "selection_preview_query": "PASS",
+    "source_code_changes": false,
+    "browser_and_grade_write_retest": "not repeated for additive schema application"
+  }
 }

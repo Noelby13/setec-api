@@ -78,6 +78,7 @@ async function main() {
     await q("INSERT INTO inscripciones(codigo_expediente,aspirante_id,cohorte_id,estado) VALUES ('VCLASS-PENDING',$1,$2,'PENDIENTE_PAGO')",[pending.id,cohorts[0].id]);
     await q("INSERT INTO virtual_classroom_accounts(person_type,person_id,username,verified,updated_by) VALUES ('user',$1,'lucia.moodle',TRUE,$2),('user',$3,'docente.moodle',TRUE,$2)",[linkedUser.id,admin.id,admin.id]);
     for (const [index,schedule] of schedules.entries()) await q("INSERT INTO virtual_classroom_courses(schedule_id,shortname,category,teacher_role,updated_by) VALUES($1,$2,'Posgrados','editingteacher',$3)",[schedule.id,`VCLASS-${index}`,admin.id]);
+    const { VirtualClassroomDAO } = await import(pathToFileURL(path.join(root,'src/modules/virtual-classroom/virtual-classroom.dao.ts')).href);
     const { VirtualClassroomService } = await import(pathToFileURL(path.join(root,'src/modules/virtual-classroom/virtual-classroom.service.ts')).href);
     const actor = { id:admin.id,rol:'SUPER_ADMIN',permisos:[] };
     const candidateResult = await VirtualClassroomService.candidates({ from:'2026-10-29',to:'2026-12-01' },actor);
@@ -96,6 +97,34 @@ async function main() {
     assert.match(exported,/lucia\.moodle,Lucía,Álvarez/);
     assert.equal((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count,1);
     checks.push('active-only roster consolidation produces one accented account row across two courses');
+
+    const collisionPeople:any[]=[];
+    for (const [index,cohort] of cohorts.entries()) {
+      collisionPeople.push(await one(`INSERT INTO personas_aspirantes(tipo_identificacion,numero_identificacion,nombres,apellidos,fecha_nacimiento,email,telefono)
+        VALUES('PASAPORTE',$1,'Common','Student','2000-01-01',$2,'12345678') RETURNING id`,[`VCLASS-COLLISION-${index}`,`common@domain${index}.test`]));
+      await q("INSERT INTO inscripciones(codigo_expediente,aspirante_id,cohorte_id,estado) VALUES($1,$2,$3,'MATRICULADO_ACTIVO')",
+        [`VCLASS-COLLISION-${index}`,collisionPeople[index].id,cohort.id]);
+    }
+    const candidateFor = async (ids:string[],personId:string) => (await VirtualClassroomService.previewExport(ids)).people
+      .find((person:any)=>person.person_key===`applicant:${personId}`)?.username;
+    const expectedCollisionNames=collisionPeople.map(person=>`pep.applicant.${String(person.id).replaceAll('-','')}`);
+    const aloneNames=await Promise.all(collisionPeople.map((person,index)=>candidateFor([schedules[index].id],person.id)));
+    const combined=await VirtualClassroomService.previewExport(schedules.map(schedule=>schedule.id));
+    const reversed=await VirtualClassroomService.previewExport(schedules.map(schedule=>schedule.id).reverse());
+    const combinedNames=collisionPeople.map(person=>combined.people.find((row:any)=>row.person_key===`applicant:${person.id}`)?.username);
+    const reversedNames=collisionPeople.map(person=>reversed.people.find((row:any)=>row.person_key===`applicant:${person.id}`)?.username);
+    assert.deepEqual(aloneNames,expectedCollisionNames);
+    assert.deepEqual(combinedNames,expectedCollisionNames);
+    assert.deepEqual(reversedNames,expectedCollisionNames);
+    assert.equal(new Set(expectedCollisionNames).size,2);
+    await VirtualClassroomDAO.upsertAccount('applicant',collisionPeople[0].id,{username:'common'},admin.id);
+    assert.equal(await candidateFor([schedules[1].id],collisionPeople[1].id),expectedCollisionNames[1]);
+    await q("DELETE FROM virtual_classroom_accounts WHERE person_type='applicant' AND person_id=ANY($1::uuid[])",[collisionPeople.map(person=>person.id)]);
+    for (const person of collisionPeople) {
+      await q('DELETE FROM inscripciones WHERE aspirante_id=$1',[person.id]);
+      await q('DELETE FROM personas_aspirantes WHERE id=$1',[person.id]);
+    }
+    checks.push('email-derived username proposals are global, order-independent, and remain stable after another identity is confirmed');
 
     await q('DELETE FROM virtual_classroom_courses WHERE schedule_id=$1',[schedules[0].id]);
     const proposedCourse = await VirtualClassroomService.previewExport([schedules[0].id]);
@@ -152,7 +181,6 @@ async function main() {
     assert.equal(firstConfirmation.processed,1);
     assert.equal(Number((await one('SELECT calificacion_cuantitativa FROM matricula_componentes_snepa WHERE programacion_componente_id=$1',[schedules[0].id])).calificacion_cuantitativa),85);
     assert.equal((await one('SELECT length(source_bytes) AS bytes FROM virtual_classroom_grade_previews WHERE id=$1',[firstPreview.preview_id])).bytes>0,true);
-    const { VirtualClassroomDAO } = await import(pathToFileURL(path.join(root,'src/modules/virtual-classroom/virtual-classroom.dao.ts')).href);
     const dao:any=VirtualClassroomDAO;
     let interleaved=false;
     const originalSnapshot=dao.gradePreviewSnapshot;

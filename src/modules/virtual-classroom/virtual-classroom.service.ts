@@ -79,7 +79,17 @@ export class VirtualClassroomService {
       ...[...generatedCodes.values()].flat()];
     const codeOwners = (await VirtualClassroomDAO.courseCodeOwners(codes)).rows;
     const peopleResult = await VirtualClassroomDAO.exportPeople(scheduleIds);
-    const usernamesToCheck = peopleResult.rows.flatMap((source: any) => [source.username,source.suggested_username,
+    const globalPeople = (await VirtualClassroomDAO.globalProposalPeople()).rows;
+    const globalByPerson = new Map<string,any>();
+    for (const source of globalPeople) {
+      if (!globalByPerson.has(source.person_key)) globalByPerson.set(source.person_key,source);
+    }
+    const emailCandidateCounts = new Map<string,number>();
+    for (const person of globalByPerson.values()) {
+      const localPart = emailUsername(person.email);
+      if (localPart) emailCandidateCounts.set(localPart,(emailCandidateCounts.get(localPart) ?? 0) + 1);
+    }
+    const usernamesToCheck = [...peopleResult.rows,...globalByPerson.values()].flatMap((source: any) => [source.username,source.suggested_username,
       emailUsername(source.email_override || source.email),...opaqueUsernames(source.person_key)]);
     const usernameOwners = (await VirtualClassroomDAO.usernameOwners(usernamesToCheck)).rows;
     const people = new Map<string, any>();
@@ -113,7 +123,8 @@ export class VirtualClassroomService {
       const fallbackUsernames = opaqueUsernames(source.person_key);
       const fallbackUsername = fallbackUsernames[0];
       const emailLocalPart = emailUsername(source.email_override || source.email);
-      const proposed = String(source.username || source.suggested_username || emailLocalPart || fallbackUsername).trim();
+      const emailProposal = emailCandidateCounts.get(emailLocalPart) === 1 ? emailLocalPart : '';
+      const proposed = String(source.username || source.suggested_username || emailProposal || fallbackUsername).trim();
       const candidate = /^[A-Za-z0-9._@+-]{1,100}$/.test(proposed) ? proposed : fallbackUsername;
       const lowerCandidate = candidate.toLowerCase();
       const savedUsernameInvalid = Boolean(source.username) && !/^[A-Za-z0-9._@+-]{1,100}$/.test(String(source.username).trim());

@@ -84,7 +84,7 @@ export class VirtualClassroomDAO {
   static async exportPeople(scheduleIds: string[], db: DbClient = pool) {
     return db.query(`
       SELECT pcc.id AS schedule_id, CASE WHEN pa.usuario_id IS NULL THEN 'applicant:' || pa.id::text ELSE 'user:' || pa.usuario_id::text END AS person_key,
-        pa.nombres AS firstname,pa.apellidos AS lastname,COALESCE(NULLIF(pa.email,''),NULLIF(u.email,'')) AS email,
+        pa.nombres AS firstname,pa.apellidos AS lastname,COALESCE(NULLIF(u.email,''),NULLIF(pa.email,'')) AS email,
         u.username AS suggested_username,
         vm.username,vm.verified,vm.firstname AS firstname_override,vm.lastname AS lastname_override,vm.email AS email_override,
         'student'::text AS kind,'student'::text AS role
@@ -105,6 +105,28 @@ export class VirtualClassroomDAO {
         AND vm.person_id=COALESCE(pa.usuario_id,pa.id)
       LEFT JOIN virtual_classroom_courses cm ON cm.schedule_id=pcc.id
       WHERE pcc.id=ANY($1::uuid[]) ORDER BY person_key,schedule_id`, [scheduleIds]);
+  }
+
+  static async globalProposalPeople() {
+    return pool.query(`WITH identities AS (
+        SELECT CASE WHEN pa.usuario_id IS NULL THEN 'applicant:' || pa.id::text ELSE 'user:' || pa.usuario_id::text END AS person_key,
+          vm.username,u.username AS suggested_username,COALESCE(NULLIF(u.email,''),NULLIF(pa.email,'')) AS email
+        FROM personas_aspirantes pa
+        JOIN inscripciones i ON i.aspirante_id=pa.id AND i.estado='MATRICULADO_ACTIVO'
+        LEFT JOIN usuarios u ON u.id=pa.usuario_id
+        LEFT JOIN virtual_classroom_accounts vm ON vm.person_type=CASE WHEN pa.usuario_id IS NULL THEN 'applicant' ELSE 'user' END
+          AND vm.person_id=COALESCE(pa.usuario_id,pa.id)
+        UNION ALL
+        SELECT CASE WHEN staff.usuario_id IS NULL THEN 'teacher:' || staff.id::text ELSE 'user:' || staff.usuario_id::text END,
+          vm.username,u.username,u.email
+        FROM personal_academico staff
+        JOIN programacion_componentes_cohorte pcc ON pcc.docente_titular_id=staff.id
+        LEFT JOIN usuarios u ON u.id=staff.usuario_id
+        LEFT JOIN virtual_classroom_accounts vm ON vm.person_type=CASE WHEN staff.usuario_id IS NULL THEN 'teacher' ELSE 'user' END
+          AND vm.person_id=COALESCE(staff.usuario_id,staff.id)
+      )
+      SELECT DISTINCT ON (person_key) person_key,username,suggested_username,email
+      FROM identities ORDER BY person_key,username NULLS LAST,suggested_username NULLS LAST,email NULLS LAST`);
   }
 
   static async usernameOwners(candidates: string[]) {

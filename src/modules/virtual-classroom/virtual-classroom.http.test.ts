@@ -9,6 +9,46 @@ import { VirtualClassroomService } from './virtual-classroom.service';
 
 afterEach(() => mock.restoreAll());
 
+test('category is validated and forwarded unchanged through candidates, preview, and export HTTP endpoints', async () => {
+  process.env.JWT_SECRET = 'virtual-classroom-category-http-tests';
+  process.env.JWT_REFRESH_SECRET = 'virtual-classroom-category-refresh-tests';
+  const userId = '00000000-0000-4000-8000-000000000004';
+  const auth = { role: 'SUPER_ADMIN', permissions: [] as string[] };
+  const calls: any[] = [];
+  let candidateSql = '';
+  let candidateValues: unknown[] = [];
+  mock.method(AuthDao, 'findUserById', async () => ({ id: userId, activo: true, rol_nombre: auth.role, rol_id: 'role' }));
+  mock.method(AuthDao, 'getPermissionsByRoleId', async () => auth.permissions);
+  mock.method(AuthDao, 'findActiveSessionById', async () => ({ id: 'session' }));
+  mock.method(VirtualClassroomService,'previewExport',async (...args:any[])=>{ calls.push(['preview',...args]); return { courses:[],people:[],issues:[] }; });
+  mock.method(VirtualClassroomService,'createExport',async (...args:any[])=>{ calls.push(['export',...args]); return { content:Buffer.from('ok'),filename:'x.csv',contentType:'text/csv',export:{id:'export'} }; });
+  mock.method(pool,'query',async (sql:string,values:unknown[]=[])=>{
+    candidateSql=sql; candidateValues=values;
+    return { rows:[
+      { programa_id:'00000000-0000-4000-8000-000000000010',programa_nombre:'Programa',cohorte_id:'00000000-0000-4000-8000-000000000011',
+        codigo_cohorte:'P-1',schedule_id:'00000000-0000-4000-8000-000000000012',componente_nombre:'Componente',fecha_inicio:'2026-11-01',
+        fecha_fin:'2026-11-30',docente_nombre:'Docente',actas_notas_cerradas:false,estado_cohorte:'INSCRIPCION_ABIERTA',effective_category:'00123' },
+      { programa_id:'00000000-0000-4000-8000-000000000010',programa_nombre:'Programa',cohorte_id:'00000000-0000-4000-8000-000000000013',
+        codigo_cohorte:'P-2',schedule_id:'00000000-0000-4000-8000-000000000014',componente_nombre:'Componente',fecha_inicio:'2026-11-01',
+        fecha_fin:'2026-11-30',docente_nombre:'Docente',actas_notas_cerradas:false,estado_cohorte:'INSCRIPCION_ABIERTA',effective_category:'Otra' },
+    ] } as any;
+  });
+  const http = isolatedHttp(app);
+  const token = jwt.sign({ sub: userId, sid: 'session' }, process.env.JWT_SECRET);
+  const ids = ['00000000-0000-4000-8000-000000000012'];
+  const candidates=await http.request('/api/virtual-classroom/candidates?category=%2000123%20', 'GET', undefined, token);
+  assert.equal(candidates.status,200);
+  assert.deepEqual(candidates.body.data.categories,[{value:'00123',course_count:1},{value:'Otra',course_count:1}]);
+  assert.deepEqual(candidates.body.data.schedules.map((schedule:any)=>[schedule.id,schedule.category]),[['00000000-0000-4000-8000-000000000012','00123']]);
+  assert.match(candidateSql,/COALESCE\(NULLIF\(btrim\(current_course\.category\)/);
+  assert.equal(candidateValues[0],null);
+  assert.equal((await http.request('/api/virtual-classroom/candidates?category=%20', 'GET', undefined, token)).status,400);
+  assert.equal((await http.request('/api/virtual-classroom/exports/preview','POST',{schedule_ids:ids,category:'00123'},token)).status,200);
+  assert.equal((await http.request('/api/virtual-classroom/exports','POST',{schedule_ids:ids,format:'users_csv',category:'00123'},token)).status,200);
+  assert.deepEqual(calls[0],['preview',ids,'00123']);
+  assert.deepEqual(calls[1],['export',ids,'users_csv',calls[1][3],'00123']);
+});
+
 test('virtual classroom routes require an authenticated user and expose candidates', async () => {
   process.env.JWT_SECRET = 'virtual-classroom-http-tests';
   process.env.JWT_REFRESH_SECRET = 'virtual-classroom-refresh-tests';

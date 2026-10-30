@@ -1,18 +1,28 @@
 import { pool, DbClient } from '../../db/pool';
 
 export class VirtualClassroomDAO {
-  static async candidates(filters: { from?: string; to?: string; programaId?: string; cohorteId?: string; estadoCohorte?: string; defaultOperationalStates: boolean; userId: string; teacherOnly: boolean }) {
+  static async candidates(filters: { from?: string; to?: string; programaId?: string; cohorteId?: string; estadoCohorte?: string; category?: string; defaultOperationalStates: boolean; userId: string; teacherOnly: boolean }) {
     const result = await pool.query(`
       SELECT DISTINCT p.id AS programa_id, p.nombre AS programa_nombre,
         c.id AS cohorte_id, c.codigo_cohorte,
         pcc.id AS schedule_id, cc.nombre AS componente_nombre, pcc.fecha_inicio, pcc.fecha_fin,
         pa.nombres || ' ' || pa.apellidos AS docente_nombre,
-        pcc.actas_notas_cerradas,c.estado_cohorte
+        pcc.actas_notas_cerradas,c.estado_cohorte,
+        COALESCE(NULLIF(btrim(current_course.category),''),NULLIF(btrim(latest.category),''),'1') AS effective_category
       FROM programacion_componentes_cohorte pcc
       JOIN cohortes_apertura c ON c.id=pcc.cohorte_id
       JOIN programas_academicos p ON p.id=c.programa_id
       JOIN componentes_curriculares cc ON cc.id=pcc.componente_id
       LEFT JOIN personal_academico pa ON pa.id=pcc.docente_titular_id
+      LEFT JOIN virtual_classroom_courses current_course ON current_course.schedule_id=pcc.id
+      LEFT JOIN LATERAL (
+        SELECT vc.category
+        FROM virtual_classroom_courses vc
+        JOIN programacion_componentes_cohorte mapped ON mapped.id=vc.schedule_id
+        JOIN cohortes_apertura mapped_cohort ON mapped_cohort.id=mapped.cohorte_id
+        WHERE mapped_cohort.programa_id=c.programa_id
+        ORDER BY vc.updated_at DESC,vc.id DESC LIMIT 1
+      ) latest ON TRUE
       WHERE ($1::date IS NULL OR COALESCE(pcc.fecha_inicio,c.fecha_inicio_clases) BETWEEN $1::date AND $2::date)
         AND ($3::uuid IS NULL OR p.id=$3)
         AND ($4::uuid IS NULL OR c.id=$4)
@@ -21,17 +31,26 @@ export class VirtualClassroomDAO {
       ORDER BY p.nombre,c.codigo_cohorte,pcc.fecha_inicio,cc.nombre`,
       [filters.from ?? null, filters.to ?? null, filters.programaId ?? null, filters.cohorteId ?? null,
         filters.estadoCohorte ?? null, filters.defaultOperationalStates, filters.teacherOnly, filters.userId]);
+    const categoryCounts = new Map<string, number>();
+    for (const row of result.rows) {
+      const value = String(row.effective_category ?? '1').trim();
+      categoryCounts.set(value,(categoryCounts.get(value) ?? 0) + 1);
+    }
+    const filteredRows = filters.category === undefined ? result.rows : result.rows.filter(row =>
+      String(row.effective_category ?? '1').trim() === filters.category);
     const programs = new Map<string, { id: string; nombre: string }>();
     const cohorts = new Map<string, { id: string; programa_id: string; codigo_cohorte: string; estado_cohorte: string }>();
-    const schedules = result.rows.map(row => {
+    const schedules = filteredRows.map(row => {
       programs.set(row.programa_id, { id: row.programa_id, nombre: row.programa_nombre });
       cohorts.set(row.cohorte_id, { id: row.cohorte_id, programa_id: row.programa_id, codigo_cohorte: row.codigo_cohorte, estado_cohorte: row.estado_cohorte });
       return { id: row.schedule_id, cohorte_id: row.cohorte_id, programa_id: row.programa_id,
         componente_nombre: row.componente_nombre, codigo_cohorte: row.codigo_cohorte,
         fecha_inicio: row.fecha_inicio, fecha_fin: row.fecha_fin, docente_nombre: row.docente_nombre,
-        actas_notas_cerradas: row.actas_notas_cerradas, estado_cohorte: row.estado_cohorte };
+        actas_notas_cerradas: row.actas_notas_cerradas, estado_cohorte: row.estado_cohorte,
+        category: String(row.effective_category ?? '1').trim() };
     });
-    return { programs: [...programs.values()], cohorts: [...cohorts.values()], schedules };
+    return { programs: [...programs.values()], cohorts: [...cohorts.values()], schedules,
+      categories: [...categoryCounts].map(([value,course_count]) => ({ value,course_count })) };
   }
 
   static async exportContext(scheduleIds: string[], db: DbClient = pool) {

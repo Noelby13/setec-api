@@ -1,6 +1,7 @@
 /** Disposable local PostgreSQL proof. Uses only a cached image and its own database/container. */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import ExcelJS from 'exceljs';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -77,13 +78,56 @@ async function main() {
     const pending = await one("INSERT INTO personas_aspirantes(tipo_identificacion,numero_identificacion,nombres,apellidos,fecha_nacimiento,email,telefono) VALUES ('PASAPORTE','VCLASS-PENDING','No','Activo','2000-01-01','pending@vclass.test','12345678') RETURNING id");
     await q("INSERT INTO inscripciones(codigo_expediente,aspirante_id,cohorte_id,estado) VALUES ('VCLASS-PENDING',$1,$2,'PENDIENTE_PAGO')",[pending.id,cohorts[0].id]);
     await q("INSERT INTO virtual_classroom_accounts(person_type,person_id,username,verified,updated_by) VALUES ('user',$1,'lucia.moodle',TRUE,$2),('user',$3,'docente.moodle',TRUE,$2)",[linkedUser.id,admin.id,admin.id]);
-    for (const [index,schedule] of schedules.entries()) await q("INSERT INTO virtual_classroom_courses(schedule_id,shortname,category,teacher_role,updated_by) VALUES($1,$2,'Posgrados','editingteacher',$3)",[schedule.id,`VCLASS-${index}`,admin.id]);
+    const unconfiguredCandidates=await (await import(pathToFileURL(path.join(root,'src/modules/virtual-classroom/virtual-classroom.service.ts')).href))
+      .VirtualClassroomService.candidates({from:'2026-10-29',to:'2026-12-01'}, {id:admin.id,rol:'SUPER_ADMIN',permisos:[]});
+    assert.deepEqual(unconfiguredCandidates.categories,[{value:'1',course_count:2}]);
+    for (const [index,schedule] of schedules.entries()) await q("INSERT INTO virtual_classroom_courses(schedule_id,shortname,category,teacher_role,updated_by) VALUES($1,$2,$4,'editingteacher',$3)",[schedule.id,`VCLASS-${index}`,admin.id,index===0?'00123':'Posgrados']);
     const { VirtualClassroomDAO } = await import(pathToFileURL(path.join(root,'src/modules/virtual-classroom/virtual-classroom.dao.ts')).href);
     const { VirtualClassroomService } = await import(pathToFileURL(path.join(root,'src/modules/virtual-classroom/virtual-classroom.service.ts')).href);
     const actor = { id:admin.id,rol:'SUPER_ADMIN',permisos:[] };
     const candidateResult = await VirtualClassroomService.candidates({ from:'2026-10-29',to:'2026-12-01' },actor);
     assert.equal(candidateResult.schedules.length,2);
     assert.equal(candidateResult.schedules[0].componente_nombre,'Gestión Pública');
+    assert.deepEqual(candidateResult.categories,[{value:'00123',course_count:1},{value:'Posgrados',course_count:1}]);
+    const categoryCandidates=await VirtualClassroomService.candidates({from:'2026-10-29',to:'2026-12-01',category:'00123'},actor);
+    assert.deepEqual(categoryCandidates.schedules.map((row:any)=>[row.id,row.category]),[[schedules[0].id,'00123']]);
+    assert.equal(categoryCandidates.programs.length,1);
+    assert.equal(categoryCandidates.cohorts.length,1);
+    const unknownCategory=await VirtualClassroomService.candidates({from:'2026-10-29',to:'2026-12-01',category:'unknown'},actor);
+    assert.equal(unknownCategory.schedules.length,0);
+    assert.deepEqual(unknownCategory.categories,candidateResult.categories);
+    const categoryPreview=await VirtualClassroomService.previewExport([schedules[0].id],'00123');
+    assert.equal(categoryPreview.category,'00123');
+    assert.deepEqual(categoryPreview.courses.map((course:any)=>course.category),['00123']);
+    const categoryUsers=await VirtualClassroomService.createExport([schedules[0].id],'users_csv',actor,'00123');
+    assert.match(categoryUsers.content.toString('utf8'),/course1,role1/);
+    assert.doesNotMatch(categoryUsers.content.toString('utf8'),/course2|VCLASS-1/);
+    const categoryCourses=await VirtualClassroomService.createExport([schedules[0].id],'courses_csv',actor,'00123');
+    assert.match(categoryCourses.content.toString('utf8'),/VCLASS-0,Gestión Pública - VCLASS-0/);
+    assert.doesNotMatch(categoryCourses.content.toString('utf8'),/VCLASS-1/);
+    const categoryXlsx=await VirtualClassroomService.createExport([schedules[0].id],'xlsx',actor,'00123');
+    const categoryWorkbook=new ExcelJS.Workbook();
+    await categoryWorkbook.xlsx.load(categoryXlsx.content);
+    const categoryCourseRows=categoryWorkbook.getWorksheet('Cursos')!.getSheetValues().slice(2).filter(Boolean);
+    assert.equal(categoryCourseRows.length,1);
+    assert.equal((categoryCourseRows[0] as any[])[1],'VCLASS-0');
+    const categoryUserRows=categoryWorkbook.getWorksheet('Usuarios')!.getSheetValues().slice(2).filter(Boolean);
+    assert.equal(categoryUserRows.length,2);
+    assert.equal((categoryUserRows[0] as any[]).length,7);
+    const categorySnapshot=await one('SELECT content_snapshot FROM virtual_classroom_exports WHERE id=$1',[categoryCourses.export.id]);
+    assert.equal(categorySnapshot.content_snapshot.category,'00123');
+    assert.equal(categorySnapshot.content_snapshot.courses.length,1);
+    const exportCountBeforeCategoryConflict=Number((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count);
+    await q("UPDATE virtual_classroom_courses SET category='Changed after review' WHERE schedule_id=$1",[schedules[0].id]);
+    let categoryConflict:any;
+    try { await VirtualClassroomService.createExport([schedules[0].id],'courses_csv',actor,'00123'); }
+    catch (error) { categoryConflict=error; }
+    const exportCountAfterCategoryConflict=Number((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count);
+    assert.equal(categoryConflict?.statusCode,409);
+    assert.equal(exportCountAfterCategoryConflict,exportCountBeforeCategoryConflict);
+    await q("UPDATE virtual_classroom_courses SET category='00123' WHERE schedule_id=$1",[schedules[0].id]);
+    await q("UPDATE virtual_classroom_courses SET updated_at=NOW()+INTERVAL '1 minute' WHERE schedule_id=$1",[schedules[0].id]);
+    checks.push('category options count unconfigured proposals and exact stored values before filtering; filtered scopes and all three exports exclude other-category courses, and stale category assignment conflicts without export history');
     checks.push('candidate query preserves program/cohort/component identity and accent text');
     const stateFixtures:any[]=[];
     for (const [index,state] of ['INSCRIPCION_ABIERTA','QUORUM_ALCANZADO_COBRANDO','EN_EJECUCION','PLANIFICADA','CANCELADA'].entries()) {
@@ -97,6 +141,7 @@ async function main() {
     }
     const operational=await VirtualClassroomService.candidates({},actor);
     assert.equal(operational.schedules.length,3);
+    assert.equal(operational.schedules.find((row:any)=>row.id===stateFixtures[0].scheduleId)?.category,'00123');
     assert.deepEqual(new Set(operational.schedules.map((row:any)=>row.estado_cohorte)),
       new Set(['INSCRIPCION_ABIERTA','QUORUM_ALCANZADO_COBRANDO','EN_EJECUCION']));
     assert.equal(operational.cohorts.length,3);
@@ -118,7 +163,7 @@ async function main() {
     const exported = exportResult.content.toString('utf8');
     assert.match(exported,/username,firstname,lastname,email,course1,role1,course2,role2/);
     assert.match(exported,/lucia\.moodle,Lucía,Álvarez/);
-    assert.equal((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count,1);
+    assert.equal((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count,4);
     checks.push('active-only roster consolidation produces one accented account row across two courses');
 
     const collisionPeople:any[]=[];

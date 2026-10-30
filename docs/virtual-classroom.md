@@ -53,3 +53,11 @@ Every valid preview is bound to the current user, schedule, original file bytes,
 ## Verification
 
 Run `node --import tsx --test src/modules/virtual-classroom/*.test.ts`, `npm test`, and `npm run build`. `npm run test:virtual-classroom:integration` uses only a cached local `postgres:16-alpine` Docker image, a unique disposable container/database, and a scratch directory. It never pulls images or reads `.env`; it removes only resources created by that run.
+
+## Moodle category scope
+
+`GET /api/virtual-classroom/candidates` accepts optional `category` alongside program, cohort and state filters. Category is the exact trimmed Moodle category value, not an internal academic classification. The response includes `categories` (`value`, `course_count`) before applying the category filter, and each schedule carries its effective `category`: saved course setting, same-program proposal default, or `1`.
+
+Include the same optional `category` in `POST /exports/preview` and `POST /exports`, together with the selected `schedule_ids` (and export `format`). The server rebuilds the current assignments and returns 409 when any selected course belongs to another category or was reassigned after review. It does not create an export batch for that rejected request. Without `category`, existing selection/export behavior remains unchanged.
+
+The page selects all visible courses when a category is chosen; program, cohort and state filters still apply. Users can refine that selection before review. The existing limit of 100 schedules is enforced without silently truncating a category.

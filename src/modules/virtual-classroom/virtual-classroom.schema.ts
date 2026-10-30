@@ -7,8 +7,10 @@ export const candidatesQuerySchema = z.object({
   programa_id: uuid.optional(),
   cohorte_id: uuid.optional(),
   estado_cohorte: z.enum(['PLANIFICADA','INSCRIPCION_ABIERTA','QUORUM_ALCANZADO_COBRANDO','EN_EJECUCION','FINALIZADA_PENDIENTE_EVAL','EVALUADA_SETEC','CANCELADA']).optional(),
+  category: z.string().trim().min(1).max(120).optional(),
 });
-export const exportPreviewSchema = z.object({ schedule_ids: z.array(uuid).min(1).max(100) });
+const category = z.string().trim().min(1).max(120).optional();
+export const exportPreviewSchema = z.object({ schedule_ids: z.array(uuid).min(1).max(100), category });
 export const accountMappingSchema = z.object({ username: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9._@+-]+$/), verified: z.literal(true),
   firstname: z.string().trim().min(1).max(120).optional(), lastname: z.string().trim().min(1).max(120).optional(),
   email: z.email().max(254).optional() });
@@ -19,7 +21,7 @@ export const courseMappingSchema = z.object({
   fullname: z.string().trim().min(1).max(254).optional(),
   summary: z.string().trim().min(1).max(65535).optional(),
 });
-export const exportSchema = z.object({ schedule_ids: z.array(uuid).min(1).max(100), format: z.enum(['xlsx', 'users_csv', 'courses_csv']) });
+export const exportSchema = z.object({ schedule_ids: z.array(uuid).min(1).max(100), format: z.enum(['xlsx', 'users_csv', 'courses_csv']), category });
 export const scheduleParamSchema = z.object({ programacionComponenteId: uuid });
 export const courseScheduleParamSchema = z.object({ scheduleId: uuid });
 export const gradePreviewQuerySchema = z.object({ username_column: z.string().max(200).optional(), grade_column: z.string().max(200).optional() });

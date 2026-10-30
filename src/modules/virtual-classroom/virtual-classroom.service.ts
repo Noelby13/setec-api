@@ -43,6 +43,13 @@ function validatedScheduleIds(ids: string[], rows: any[]) {
   return rows;
 }
 
+function validatedCategory(category?: string): string | undefined {
+  if (category === undefined) return undefined;
+  const value = String(category).trim();
+  if (!value || value.length > 120) throw new AppError('La categoría Moodle debe ser texto no vacío de hasta 120 caracteres.',400);
+  return value;
+}
+
 function gradeStateFingerprint(rows: any[]) {
   return createHash('sha256').update(JSON.stringify(rows.map(row => ({
     enrollment_id: row.enrollment_id,
@@ -54,7 +61,8 @@ function gradeStateFingerprint(rows: any[]) {
 }
 
 export class VirtualClassroomService {
-  static async candidates(query: { from?: string; to?: string; programa_id?: string; cohorte_id?: string; estado_cohorte?: string }, user: AuthUserPayload) {
+  static async candidates(query: { from?: string; to?: string; programa_id?: string; cohorte_id?: string; estado_cohorte?: string; category?: string }, user: AuthUserPayload) {
+    const category = validatedCategory(query.category);
     const hasLegacyDateFilter = query.from !== undefined || query.to !== undefined;
     let start: string | undefined;
     let end: string | undefined;
@@ -69,12 +77,13 @@ export class VirtualClassroomService {
     const grades = user.rol === 'SUPER_ADMIN' || user.permisos.includes('NOTA_IMPORTAR');
     if (!admin && !grades) throw new AppError('Se requiere permiso COHORTE_GESTIONAR o NOTA_IMPORTAR.', 403);
     return VirtualClassroomDAO.candidates({ from: start, to: end, programaId: query.programa_id,
-      cohorteId: query.cohorte_id, estadoCohorte: query.estado_cohorte,
+      cohorteId: query.cohorte_id, estadoCohorte: query.estado_cohorte, category,
       defaultOperationalStates: !hasLegacyDateFilter && query.estado_cohorte === undefined,
       userId: user.id, teacherOnly: !admin && user.rol === 'DOCENTE' });
   }
 
-  static async previewExport(scheduleIds: string[]) {
+  static async previewExport(scheduleIds: string[], requestedCategory?: string) {
+    const categoryFilter = validatedCategory(requestedCategory);
     const schedules = validatedScheduleIds(scheduleIds, (await VirtualClassroomDAO.exportContext(scheduleIds)).rows);
     const defaults = new Map<string, any>((await VirtualClassroomDAO.proposalDefaults(scheduleIds)).rows.map((row: any) => [row.schedule_id,row]));
     const generatedCodes = new Map<string,string[]>();
@@ -107,7 +116,7 @@ export class VirtualClassroomService {
       const fallbackCodes = generatedCodes.get(schedule.schedule_id) ?? [];
       const candidateCode = fallbackCodes.find(code => !codeOwners.some((owner: any) => owner.code === code.toLowerCase() && owner.schedule_id !== schedule.schedule_id));
       const shortname = mappedCode || legacyCode || candidateCode || fallbackCodes[0] || `pep.${String(schedule.schedule_id).replaceAll('-','')}`;
-      const category = schedule.category || defaults.get(schedule.schedule_id)?.category || '1';
+      const category = String(schedule.category || defaults.get(schedule.schedule_id)?.category || '1').trim();
       const teacherRole = schedule.teacher_role || defaults.get(schedule.schedule_id)?.teacher_role || 'teacher';
       const fullname = schedule.fullname_override || `${schedule.componente_nombre} - ${schedule.codigo_cohorte}`;
       const summary = schedule.summary_override || `${schedule.programa_nombre}; ${schedule.fecha_inicio ?? ''} a ${schedule.fecha_fin ?? ''}`;
@@ -124,6 +133,9 @@ export class VirtualClassroomService {
         confirmed:Boolean(schedule.course_mapping_id),
         fecha_inicio: schedule.fecha_inicio, fecha_fin: schedule.fecha_fin };
     });
+    if (categoryFilter !== undefined && courses.some(course => course.category !== categoryFilter)) {
+      throw new AppError('La selección incluye cursos fuera de la categoría solicitada o su categoría cambió; revise nuevamente la selección.',409);
+    }
     const reservedUsernames = new Set<string>();
     for (const source of peopleResult.rows) {
       const existingPerson = people.get(source.person_key);
@@ -169,7 +181,8 @@ export class VirtualClassroomService {
       if (person.username && seen.has(person.username.toLowerCase())) issues.push({ code: 'USERNAME_CONFLICT', message: 'El username aparece asociado a más de una persona.', person_key: person.person_key });
       if (person.username) seen.add(person.username.toLowerCase());
     }
-    return { courses, people: [...people.values()], issues };
+    return { courses, people: [...people.values()], issues,
+      ...(categoryFilter === undefined ? {} : { category: categoryFilter }) };
   }
 
   static async configureAccount(personKey: string, config: { username: string; firstname?: string; lastname?: string; email?: string }, actor: AuthUserPayload) {
@@ -199,8 +212,9 @@ export class VirtualClassroomService {
     return (await VirtualClassroomDAO.upsertCourse(scheduleId,config,actor.id)).rows[0];
   }
 
-  static async createExport(scheduleIds: string[], format: 'xlsx'|'users_csv'|'courses_csv', actor: AuthUserPayload) {
-    const preview = await this.previewExport(scheduleIds);
+  static async createExport(scheduleIds: string[], format: 'xlsx'|'users_csv'|'courses_csv', actor: AuthUserPayload, requestedCategory?: string) {
+    const categoryFilter = validatedCategory(requestedCategory);
+    const preview = await this.previewExport(scheduleIds,categoryFilter);
     if (preview.issues.length) throw new AppError('Resuelva los problemas de validación antes de generar los archivos.', 400, preview.issues);
     const users = new Map<string, any>();
     for (const person of preview.people) {

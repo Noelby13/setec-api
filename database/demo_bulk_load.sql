@@ -24,7 +24,7 @@ BEGIN
 END $$;
 -- Serializes only this loader; never changes application locking behavior.
 SELECT pg_advisory_xact_lock(20261029, 1601);
-CREATE FUNCTION pg_temp.demo_id(key text) RETURNS uuid
+CREATE OR REPLACE FUNCTION pg_temp.demo_id(key text) RETURNS uuid
 LANGUAGE sql IMMUTABLE STRICT AS $$ SELECT md5('pep-demo-v1:' || key)::uuid $$;
 
 CREATE TEMP TABLE demo_catalog ON COMMIT DROP AS

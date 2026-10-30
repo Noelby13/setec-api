@@ -39,7 +39,7 @@ try {
   owned = true;
   let ready = false;
   for (let attempt = 0; attempt < 100; attempt++) {
-    if (docker(['exec', container, 'pg_isready', '-U', 'postgres', '-d', 'demo_test']).status === 0) {
+    if (docker(['exec', container, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'demo_test']).status === 0) {
       ready = true; break;
     }
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -89,7 +89,10 @@ try {
   query(enabled + load);
   assert.deepEqual(snapshot(), once);
   assert.equal(query('SELECT last_value FROM comprobantes_internos_numero_seq').stdout, sequence);
-  checks.push('repeat execution preserves every row and receipt sequence');
+  query(enabled + load + enabled + load);
+  assert.deepEqual(snapshot(), once);
+  assert.equal(query('SELECT last_value FROM comprobantes_internos_numero_seq').stdout, sequence);
+  checks.push('repeat execution on fresh and shared connections preserves every row and receipt sequence');
 
   query(`INSERT INTO areas_conocimiento(nombre,slug) VALUES('Existing area','existing-area');
     INSERT INTO programas_academicos(codigo_interno,nombre,slug,categoria,subtipo,area_conocimiento_id,

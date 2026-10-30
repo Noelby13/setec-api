@@ -4,7 +4,7 @@ The deliverable is [`database/demo_bulk_load.sql`](../database/demo_bulk_load.sq
 
 ## Database analysis and scope
 
-The checked-in model has **39 tables**. `database/schema.sql` is the consolidated schema; `database/init.sql` is an older base and lacks billing, certificate registry and virtual-classroom additions. `src/db/seed.ts` provisions security definitions and an administrator, rather than an academic catalog. No authoritative institutional list of careers exists in the reviewed repository. The live database was not accessed.
+The checked-in model has **39 tables**. `database/schema.sql` is the consolidated schema; `database/init.sql` is an older base and lacks billing, certificate registry and virtual-classroom additions. `src/db/seed.ts` provisions security definitions and an administrator, rather than an academic catalog. No authoritative institutional list of careers exists in the reviewed repository. The initial analysis used repository files; the subsequently authorized local execution is recorded below.
 
 | Domain | Tables and relationships | Loader behavior |
 | --- | --- | --- |
@@ -66,3 +66,9 @@ Run `node --import tsx scripts/demo-bulk-load.integration.mjs` from the API repo
 Observed checks: full SQL execution on PostgreSQL 16; expected volume; disabled accounts; absence of privilege grants; exact accepted-obligation totals and payment allocations; grade/cohort/component consistency; health-modality and date checks; an internal receipt rendered through the real PDF generator; unchanged row hashes and receipt sequence after repeated loads on fresh and shared connections; preservation and coverage of an existing hidden zero-price program; complete rollback after a late injected failure; and refusal without opt-in or on the old schema. The harness waits for TCP readiness so the image's temporary initialization server cannot produce a false ready signal. These are database-level proofs; no browser or external LMS journey was executed.
 
 Independent verification confirmed the corrected harness and SQL, with all three feature specifications satisfied; application tests passed 143/143 and TypeScript compilation passed. Native Gentle AI review could not run because its executable is unavailable; no native review receipt is claimed. Concurrency stress testing and browser/LMS journeys were not run. Full recovery/evidence is retained in `odd/tasks/demo-bulk-load.md`; its Engram mirror remains pending because that provider is unavailable.
+
+## Authorized local execution — 2026-10-29
+
+After explicit user approval, the certificate-registry migration (including its SUPER_ADMIN certificate-revocation permission) and this loader were committed to the configured development database `localhost:5432/posgrado_setec_db`. All **225 preexisting rows** across the original 37 tables were preserved unchanged. The resulting demo dataset covers **all 35 programs**, with **105 demo cohorts and 2,100 demo enrollments**. Actual totals include 107 cohorts, 2,106 applicants, 2,105 enrollments, 1,301 payments and 3,785 grades. Counts exceed the empty-schema example because three programs and existing records were already present.
+
+A private custom-format backup and verification metadata were retained in `.demo-backups-um6VQJ/` (excluded from Git), with an original copy under `/private/tmp/pep-demo-backup-LxB4ZF/`. Backup SHA-256: `a1676bc4223845858a7c7abca35701480c291a1dc8a2482d30f668881562ab96`. Independent read-only verification confirmed backup integrity, original-row preservation, the authorized permission/tables/trigger, complete program coverage, inactive demo accounts and consistent financial and academic relationships. No remote database or LMS was accessed.

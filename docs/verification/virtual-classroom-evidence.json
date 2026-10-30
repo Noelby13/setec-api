@@ -4,16 +4,16 @@
   "status": "passed_with_deployment_validation_pending",
   "api": {
     "baseline": "a353a867f6e317cfdecdada103c6e2a995ed7a54",
-    "candidate": "30c775356f2a6fe516ab63404651f43deab7aabd",
-    "tests": 142,
+    "candidate": "5c759b42b100c1667850c2f9a947a0d0b75f84e3",
+    "tests": 143,
     "build": "passed",
-    "focused_tests": 9,
+    "focused_tests": 10,
     "postgres_integration": "passed in disposable PostgreSQL16; cached local container image"
   },
   "admin": {
     "baseline": "84ebcadd18c2ee7ac4d5db81e26985be8e1c95bf",
-    "candidate": "e6172981db48e94d1ab9178fe309fa46607c503d",
-    "tests": 203,
+    "candidate": "454233fa78a49debb5779e63a528e4b5a5139878",
+    "tests": 211,
     "build": "passed",
     "browser_tests": {
       "desktop": "passed",
@@ -23,7 +23,9 @@
       "scopes": [
         "Aula Virtual",
         "Notas"
-      ]
+      ],
+      "category_desktop": "passed",
+      "category_mobile": "passed"
     }
   },
   "independent": {
@@ -35,7 +37,8 @@
       "S5": "PASS within tested contract",
       "S6": "PASS within tested contract",
       "S7": "PASS within tested contract",
-      "S8": "PASS within tested contract"
+      "S8": "PASS within tested contract",
+      "S9": "PASS within tested scope"
     },
     "corrected_blockers": {
       "B1": "valid course PUT returns200",
@@ -114,5 +117,37 @@
       "usernames_filled": true,
       "missing_real_emails": 1
     }
+  },
+  "category_scope": {
+    "request_field": "category",
+    "category_source": "saved course mapping; otherwise same-program proposal default; otherwise 1",
+    "metadata_before_category_filter": true,
+    "existing_filters_preserved": true,
+    "automatic_visible_course_selection": true,
+    "manual_subset_limit": 100,
+    "silent_truncation": false,
+    "preview_and_download_server_guard": true,
+    "mixed_or_stale_category_status": 409,
+    "exact_trimmed_string_values": true,
+    "all_three_formats_independently_verified": true,
+    "rejected_requests_all_public_table_hash_unchanged": true,
+    "late_response_protection": [
+      "candidates",
+      "preview",
+      "download"
+    ],
+    "unfiltered_payload_compatibility": "PASS",
+    "local_read_only_smoke": {
+      "available": [
+        {
+          "value": "1",
+          "course_count": 1
+        }
+      ],
+      "filtered_schedules": 1,
+      "preview_courses": 1,
+      "unknown_schedules": 0
+    },
+    "migration_required": false
   }
 }

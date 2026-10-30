@@ -1,9 +1,21 @@
 /** Tests only owned disposable PostgreSQL databases; never loads .env. */
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { z } from 'zod';
+import { programIdParamSchema } from '../src/modules/programs/program.schema.ts';
+import { cohorteIdParamSchema, cohorteQuerySchema } from '../src/modules/cohorts/cohort.schema.ts';
+import { enrollmentIdParamSchema, paymentIdParamSchema } from '../src/modules/enrollments/enrollment.schema.ts';
+
+function demoId(key) {
+  const bytes=createHash('md5').update(Buffer.from('4a47ba67d99442b88ca0ce2136c9a891','hex'))
+    .update('pep-demo-v2:'+key).digest();
+  bytes[6]=(bytes[6]&15)|48;bytes[8]=(bytes[8]&63)|128;
+  const hex=bytes.toString('hex');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
 
 const root = new URL('../', import.meta.url);
 const load = readFileSync(process.env.DEMO_LOADER_PATH || new URL('database/demo_bulk_load.sql', root), 'utf8');
@@ -53,6 +65,21 @@ try {
   checks.push('explicit opt-in refusal leaves all table contents unchanged');
 
   query(enabled + load);
+  const uuidColumns=query("SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='public' AND udt_name='uuid'")
+    .stdout.trim().split('\n').map(line=>line.split('|'));
+  const quoted=name=>'"'+name.replaceAll('"','""')+'"';
+  const uuidValues=query('SELECT DISTINCT value FROM ('+uuidColumns.map(([table,column])=>
+    `SELECT ${quoted(column)}::text AS value FROM public.${quoted(table)} WHERE ${quoted(column)} IS NOT NULL`).join(' UNION ALL ')+') all_ids')
+    .stdout.trim().split('\n');
+  for(const id of uuidValues) assert.equal(z.string().uuid().safeParse(id).success,true,`API rejects generated UUID ${id}`);
+  assert.equal(query("SELECT id FROM programas_academicos WHERE codigo_interno='MAE-SIS'").stdout.trim(),demoId('program:sistemas:1'));
+  for(const id of query('SELECT id FROM programas_academicos').stdout.trim().split('\n')) {
+    assert.equal(programIdParamSchema.safeParse({id}).success,true);
+    assert.equal(cohorteQuerySchema.safeParse({programa_id:id}).success,true);
+  }
+  for(const [table,validator,key] of [['cohortes_apertura',cohorteIdParamSchema,'id'],['inscripciones',enrollmentIdParamSchema,'id'],['pagos_inscripcion',paymentIdParamSchema,'paymentId']])
+    for(const id of query(`SELECT id FROM ${table}`).stdout.trim().split('\n'))assert.equal(validator.safeParse({[key]:id}).success,true,`${table} API parameter rejected`);
+  checks.push('all stored UUID identifiers and references satisfy the real API program, cohort, enrollment and payment validators');
   assert.equal(count('SELECT count(*) FROM programas_academicos'), 32);
   assert.equal(count('SELECT count(*) FROM areas_conocimiento'), 8);
   assert.equal(count('SELECT count(*) FROM cohortes_apertura'), 96);

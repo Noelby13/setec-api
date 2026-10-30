@@ -29,7 +29,14 @@ END $$;
 -- Serializes only this loader; never changes application locking behavior.
 SELECT pg_advisory_xact_lock(20261029, 1601);
 CREATE OR REPLACE FUNCTION pg_temp.demo_id(key text) RETURNS uuid
-LANGUAGE sql IMMUTABLE STRICT AS $$ SELECT md5('pep-demo-v2:' || key)::uuid $$;
+LANGUAGE sql IMMUTABLE STRICT AS $$
+  WITH named AS (
+    SELECT decode(md5(uuid_send('4a47ba67-d994-42b8-8ca0-ce2136c9a891'::uuid)
+      || convert_to('pep-demo-v2:' || key,'UTF8')),'hex') AS bytes
+  )
+  SELECT encode(set_byte(set_byte(bytes,6,(get_byte(bytes,6) & 15) | 48),
+    8,(get_byte(bytes,8) & 63) | 128),'hex')::uuid FROM named
+$$;
 
 CREATE TEMP TABLE demo_catalog ON COMMIT DROP AS
 SELECT * FROM (VALUES

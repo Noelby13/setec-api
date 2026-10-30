@@ -2,6 +2,14 @@
 
 The SQL file is [`database/demo_bulk_load.sql`](../database/demo_bulk_load.sql). Version 2 replaces UUID-like display labels with meaningful academic references and adds program covers and educational video links. UUIDs remain internal primary keys.
 
+### UUID validation correction
+
+The initial version 2 generated UUIDs by casting a raw MD5 value. PostgreSQL accepted those values, but many failed the API's UUID version/variant checks, causing `Validation error` in detail pages and filters. The generator now uses canonical name-based UUIDv3 values with a fixed namespace. The regression checks every stored UUID and exercises the real program, cohort, enrollment and payment schemas. API validation remains unchanged.
+
+For an already loaded broken version 2, [`database/demo_uuid_repair.sql`](../database/demo_uuid_repair.sql) repairs owned identities and their references in place after `SET demo.allow_uuid_repair = 'yes';` on the same connection. It preserves readable codes, names, notes, amounts, dates, receipt numbers, media and existing original records. It refuses affected protected artifacts instead of disabling their guards. Back up the selected local database before running it. After a repair, reopen records from a refreshed catalog or list: previously opened URLs contain the old IDs.
+
+`node --import tsx scripts/demo-uuid-repair.integration.mjs` checks the archived broken load, actual API-schema failure, in-place repair, exact inverse-mapped row preservation, original data and receipt sequence preservation, precise restoration of FK definitions, later/composite/self references, typed classroom identities, late-failure rollback and repeat-load no-ops. Affected immutable certificates, previews, sessions or historical exports stop the repair; unrelated historical exports remain byte-for-byte unchanged. Temporary FK deferral is validated and restored in the same transaction; no guard or trigger is disabled.
+
 ## What the data looks like
 
 | Visible field | Example |

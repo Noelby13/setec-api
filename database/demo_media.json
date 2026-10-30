@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "entries": {
+    "medicina": {
+      "image_url": "/uploads/programas/demo-v2-medicina.png",
+      "video_url": "https://www.youtube.com/watch?v=uBGl2BujkPQ",
+      "description": "Anatomía cardiovascular para presentar ciencias médicas.",
+      "image_source_url": "https://commons.wikimedia.org/wiki/File:Human_heart.png",
+      "image_license": "Public domain (Wikimedia Commons file page)",
+      "image_attribution": "Wikimedia Commons contributors",
+      "video_source_url": "https://www.youtube.com/watch?v=uBGl2BujkPQ",
+      "video_attribution": "CrashCourse — Introduction to Anatomy & Physiology",
+      "image_download_url": "https://upload.wikimedia.org/wikipedia/commons/2/29/Human_heart.png"
+    },
+    "enfermeria": {
+      "image_url": "/uploads/programas/demo-v2-enfermeria.jpg",
+      "video_url": "https://www.youtube.com/watch?v=uBGl2BujkPQ",
+      "description": "Atención clínica y comunicación entre enfermería y paciente.",
+      "image_source_url": "https://www.pexels.com/photo/a-medical-staff-in-a-clinic-7108317/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; Pavel Danilyuk",
+      "video_source_url": "https://www.youtube.com/watch?v=uBGl2BujkPQ",
+      "video_attribution": "CrashCourse — Introduction to Anatomy & Physiology",
+      "image_download_url": "https://images.pexels.com/photos/7108317/pexels-photo-7108317.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "odontologia": {
+      "image_url": "/uploads/programas/demo-v2-odontologia.jpg",
+      "video_url": "https://www.youtube.com/watch?v=XNbzd6yqNbg",
+      "description": "Consultorio odontológico y dentición humana.",
+      "image_source_url": "https://commons.wikimedia.org/wiki/File:Dentistry.jpg",
+      "image_license": "Leeds City Council royalty-free reuse permission stated on Commons; not a Creative Commons license",
+      "image_attribution": "Leeds City Council / Wikimedia Commons listing",
+      "video_source_url": "https://www.youtube.com/watch?v=XNbzd6yqNbg",
+      "video_attribution": "Dr Teeth — Introduction to Dental Anatomy",
+      "image_download_url": "https://upload.wikimedia.org/wikipedia/commons/1/19/Dentistry.jpg"
+    },
+    "salud-publica": {
+      "image_url": "/uploads/programas/demo-v2-salud-publica.jpg",
+      "video_url": "https://www.youtube.com/watch?v=-dmJSLNgjxo",
+      "description": "Promoción de salud y prevención desde la atención comunitaria.",
+      "image_source_url": "https://www.pexels.com/photo/a-medical-staff-in-a-clinic-7108317/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; Pavel Danilyuk",
+      "video_source_url": "https://www.youtube.com/watch?v=-dmJSLNgjxo",
+      "video_attribution": "Centers for Disease Control and Prevention — Introduction to Public Health",
+      "image_download_url": "https://images.pexels.com/photos/7108317/pexels-photo-7108317.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "sistemas": {
+      "image_url": "/uploads/programas/demo-v2-sistemas.jpg",
+      "video_url": "https://www.youtube.com/watch?v=AEaKrq3SpW8",
+      "description": "Servidor pionero y fundamentos de redes de computadoras.",
+      "image_source_url": "https://www.pexels.com/photo/server-racks-on-data-center-5480781/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; Brett Sayles",
+      "video_source_url": "https://www.youtube.com/watch?v=AEaKrq3SpW8",
+      "video_attribution": "CrashCourse — The Internet: Computer Science #29",
+      "image_download_url": "https://images.pexels.com/photos/5480781/pexels-photo-5480781.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "civil": {
+      "image_url": "/uploads/programas/demo-v2-civil.jpg",
+      "video_url": "https://www.youtube.com/watch?v=DX_zkaK5PaI",
+      "description": "Puente histórico reconocido como referente de ingeniería civil.",
+      "image_source_url": "https://commons.wikimedia.org/wiki/File:Wheeling_Suspension_Bridge.jpg",
+      "image_license": "Public domain; U.S. Library of Congress / HAER source",
+      "image_attribution": "Library of Congress, Prints & Photographs Division / HAER",
+      "video_source_url": "https://www.youtube.com/watch?v=DX_zkaK5PaI",
+      "video_attribution": "Practical Engineering — Every Kind of Bridge Explained in 15 Minutes",
+      "image_download_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Wheeling_Suspension_Bridge.jpg/960px-Wheeling_Suspension_Bridge.jpg"
+    },
+    "industrial": {
+      "image_url": "/uploads/programas/demo-v2-industrial.jpg",
+      "video_url": "https://www.youtube.com/watch?v=Um_g8sQ_p3Y",
+      "description": "Sistema transportador para ilustrar flujo y optimización de procesos.",
+      "image_source_url": "https://commons.wikimedia.org/wiki/File:Conveyor_system_in_a_factory.jpg",
+      "image_license": "CC0 1.0",
+      "image_attribution": "falco / Pixabay (via Wikimedia Commons)",
+      "video_source_url": "https://www.youtube.com/watch?v=Um_g8sQ_p3Y",
+      "video_attribution": "The Efficient Engineer — How Things Are Made: An Animated Introduction to Manufacturing Processes",
+      "image_download_url": "https://upload.wikimedia.org/wikipedia/commons/1/1e/Conveyor_system_in_a_factory.jpg"
+    },
+    "agronomia": {
+      "image_url": "/uploads/programas/demo-v2-agronomia.jpg",
+      "video_url": "https://www.youtube.com/watch?v=uQlqP0F0VAA",
+      "description": "Vivero de arroz como imagen de producción agropecuaria.",
+      "image_source_url": "https://www.pexels.com/photo/farmer-walking-through-field-during-planting-season-37201242/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; Mark Stebnicki",
+      "video_source_url": "https://www.youtube.com/watch?v=uQlqP0F0VAA",
+      "video_attribution": "Food and Agriculture Organization of the United Nations — Smart farming and climate technologies",
+      "image_download_url": "https://images.pexels.com/photos/37201242/pexels-photo-37201242.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "veterinaria": {
+      "image_url": "/uploads/programas/demo-v2-veterinaria.jpg",
+      "video_url": "https://www.youtube.com/watch?v=bADLEuKGu8w",
+      "description": "Control clínico veterinario de signos vitales en un perro.",
+      "image_source_url": "https://www.pexels.com/photo/dog-getting-checked-7469216/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; Mikhail Nilov",
+      "video_source_url": "https://www.youtube.com/watch?v=bADLEuKGu8w",
+      "video_attribution": "Food and Agriculture Organization of the United Nations — Livestock Farmer Field School: good practices to reduce antimicrobial resistance",
+      "image_download_url": "https://images.pexels.com/photos/7469216/pexels-photo-7469216.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "derecho": {
+      "image_url": "/uploads/programas/demo-v2-derecho.jpg",
+      "video_url": "https://www.youtube.com/watch?v=mXw-hEB263k",
+      "description": "Edificio judicial como portada del área de ciencias jurídicas.",
+      "image_source_url": "https://www.pexels.com/photo/stately-cherokee-county-courthouse-architecture-34998690/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; Connor Scott McManus",
+      "video_source_url": "https://nerdfighteria.info/v/mXw-hEB263k/",
+      "video_attribution": "CrashCourse — Legal System Basics: Government and Politics #18",
+      "image_download_url": "https://images.pexels.com/photos/34998690/pexels-photo-34998690.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "administracion": {
+      "image_url": "/uploads/programas/demo-v2-administracion.jpg",
+      "video_url": "https://www.youtube.com/watch?v=UHiUYj5EA0w",
+      "description": "Preparación de una reunión como escena de gestión empresarial.",
+      "image_source_url": "https://www.pexels.com/photo/people-at-a-meeting-in-the-office-4623489/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; Ketut Subiyanto",
+      "video_source_url": "https://www.youtube.com/watch?v=UHiUYj5EA0w",
+      "video_attribution": "CrashCourse — Productivity and Growth",
+      "image_download_url": "https://images.pexels.com/photos/4623489/pexels-photo-4623489.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "contabilidad": {
+      "image_url": "/uploads/programas/demo-v2-contabilidad.jpg",
+      "video_url": "https://www.youtube.com/watch?v=yYX4bvQSqbo",
+      "description": "Calculadora contable para identificar el enfoque de finanzas y auditoría.",
+      "image_source_url": "https://www.pexels.com/photo/calculator-and-pen-on-table-209224/",
+      "image_license": "CC0 1.0 (Pexels listing identifies asset as free to use)",
+      "image_attribution": "Pixabay / Pexels",
+      "video_source_url": "https://www.youtube.com/watch?v=yYX4bvQSqbo",
+      "video_attribution": "Accounting Stuff — Accounting Basics: a Guide to (Almost) Everything",
+      "image_download_url": "https://images.pexels.com/photos/209224/pexels-photo-209224.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "educacion": {
+      "image_url": "/uploads/programas/demo-v2-educacion.jpg",
+      "video_url": "https://www.youtube.com/watch?v=IhuwS5ZLwKY",
+      "description": "Estudiantes atentos durante una clase presencial.",
+      "image_source_url": "https://www.pexels.com/photo/students-inside-a-classroom-listening-attentively-8423018/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pavel Danilyuk / Pexels",
+      "video_source_url": "https://www.youtube.com/watch?v=IhuwS5ZLwKY",
+      "video_attribution": "CrashCourse — Crash Course Study Skills Preview",
+      "image_download_url": "https://images.pexels.com/photos/8423018/pexels-photo-8423018.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "psicologia": {
+      "image_url": "/uploads/programas/demo-v2-psicologia.jpg",
+      "video_url": "https://www.youtube.com/watch?v=vo4pMVb0R6M",
+      "description": "Escena de consejería para intervención y acompañamiento psicosocial.",
+      "image_source_url": "https://www.pexels.com/photo/man-in-a-psychotherapy-session-7579183/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; Antoni Shkraba",
+      "video_source_url": "https://www.youtube.com/watch?v=vo4pMVb0R6M",
+      "video_attribution": "CrashCourse — Intro to Psychology",
+      "image_download_url": "https://images.pexels.com/photos/7579183/pexels-photo-7579183.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "comunicacion": {
+      "image_url": "/uploads/programas/demo-v2-comunicacion.jpg",
+      "video_url": "https://www.youtube.com/watch?v=AD7N-1Mj-DU",
+      "description": "Fotoperiodismo y alfabetización mediática para comunicación estratégica.",
+      "image_source_url": "https://www.pexels.com/photo/woman-reporting-on-camera-10464471/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; cottonbro studio",
+      "video_source_url": "https://www.youtube.com/watch?v=AD7N-1Mj-DU",
+      "video_attribution": "CrashCourse — Introduction to Media Literacy",
+      "image_download_url": "https://images.pexels.com/photos/10464471/pexels-photo-10464471.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "economia": {
+      "image_url": "/uploads/programas/demo-v2-economia.jpg",
+      "video_url": "https://www.youtube.com/watch?v=d8uTB5XorBw",
+      "description": "Herramienta financiera junto a una introducción a la macroeconomía.",
+      "image_source_url": "https://www.pexels.com/photo/calculator-and-pen-on-table-209224/",
+      "image_license": "CC0 1.0 (Pexels listing identifies asset as free to use)",
+      "image_attribution": "Pixabay / Pexels",
+      "video_source_url": "https://www.youtube.com/watch?v=d8uTB5XorBw",
+      "video_attribution": "CrashCourse — Macroeconomics",
+      "image_download_url": "https://images.pexels.com/photos/209224/pexels-photo-209224.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "ccna": {
+      "image_url": "/uploads/programas/demo-v2-ccna.jpg",
+      "image_source_url": "https://www.pexels.com/photo/server-racks-on-data-center-5480781/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; Brett Sayles",
+      "description": "Infraestructura de redes e introducción al recorrido CCNA.",
+      "video_url": "https://www.youtube.com/watch?v=Vi5RPgUH7go",
+      "video_source_url": "https://www.youtube.com/watch?v=Vi5RPgUH7go",
+      "video_attribution": "NetTel Academy — CCNA v7: Introducción General al Curso",
+      "image_download_url": "https://images.pexels.com/photos/5480781/pexels-photo-5480781.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "ciberseguridad": {
+      "image_url": "/uploads/programas/demo-v2-ciberseguridad.jpg",
+      "image_source_url": "https://www.pexels.com/photo/server-racks-on-data-center-5480781/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; Brett Sayles",
+      "description": "Fundamentos de ciberseguridad para redes y sistemas empresariales.",
+      "video_url": "https://www.youtube.com/watch?v=bPVaOlJ6ln0",
+      "video_source_url": "https://www.youtube.com/watch?v=bPVaOlJ6ln0",
+      "video_attribution": "CrashCourse — Cybersecurity: Computer Science #31",
+      "image_download_url": "https://images.pexels.com/photos/5480781/pexels-photo-5480781.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    },
+    "ia-redes": {
+      "image_url": "/uploads/programas/demo-v2-ia-redes.jpg",
+      "image_source_url": "https://www.pexels.com/photo/server-racks-on-data-center-5480781/",
+      "image_license": "Pexels Free License",
+      "image_attribution": "Pexels Free License; Brett Sayles",
+      "description": "Aplicaciones de inteligencia artificial al diagnóstico y gestión de redes.",
+      "video_url": "https://www.youtube.com/watch?v=VY0s4JUp-K8",
+      "video_source_url": "https://www.youtube.com/watch?v=VY0s4JUp-K8",
+      "video_attribution": "David Bombal — How Cisco Is Using AI to Fix Networks",
+      "image_download_url": "https://images.pexels.com/photos/5480781/pexels-photo-5480781.jpeg?auto=compress&cs=tinysrgb&w=960&h=640&dpr=1"
+    }
+  }
+}

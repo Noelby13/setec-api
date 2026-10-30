@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = new URL('../', import.meta.url);
-const load = readFileSync(new URL('database/demo_bulk_load.sql', root), 'utf8');
+const load = readFileSync(process.env.DEMO_LOADER_PATH || new URL('database/demo_bulk_load.sql', root), 'utf8');
 const schema = readFileSync(new URL('database/schema.sql', root), 'utf8');
 const initialSchema = readFileSync(new URL('database/init.sql', root), 'utf8');
 const container = `pep-demo-test-${randomBytes(6).toString('hex')}`;
@@ -60,6 +60,27 @@ try {
   assert.equal(count('SELECT count(*) FROM componentes_curriculares'), 128);
   assert.equal(count('SELECT count(*) FROM matricula_componentes_snepa'), 3584);
   assert.equal(count('SELECT count(*) FROM expediente_graduacion_certificacion'), 640);
+  assert.equal(count(`SELECT count(*) FROM cohortes_apertura
+    WHERE codigo_cohorte !~ '^[A-Z0-9]+(-[A-Z0-9]+)*-[0-9]{4}-(I|II|III)$'`), 0,
+    'cohort selectors must show a readable program code, year and edition');
+  assert.equal(count(`SELECT count(*) FROM inscripciones WHERE codigo_expediente ~ '[a-f0-9]{20}'`), 0);
+  assert.equal(count(`SELECT count(*) FROM personas_aspirantes
+    WHERE numero_identificacion ~ '[a-f0-9]{20}' OR telefono='00000000' OR apellidos LIKE '% DEMO'`), 0);
+  assert.equal(count(`SELECT count(*) FROM pagos_inscripcion WHERE numero_referencia_o_recibo ~ '[a-f0-9]{20}'`), 0);
+  assert.equal(count(`SELECT count(*) FROM virtual_classroom_courses WHERE shortname ~ '[a-f0-9]{20}'`), 0);
+  assert.equal(count(`SELECT count(*) FROM programas_academicos
+    WHERE imagen_portada_url IS NULL OR video_promo_url IS NULL`), 0, 'every new offering needs a photo and video');
+  assert.ok(count('SELECT count(DISTINCT imagen_portada_url) FROM programas_academicos')>=8);
+  assert.ok(count('SELECT count(DISTINCT video_promo_url) FROM programas_academicos')>=8);
+  assert.equal(count(`SELECT count(*) FROM programas_academicos p WHERE p.horas_totales <>
+    (SELECT sum(c.horas) FROM componentes_curriculares c WHERE c.programa_id=p.id)
+    OR p.creditos_totales<>(SELECT sum(c.creditos) FROM componentes_curriculares c WHERE c.programa_id=p.id)`), 0);
+  assert.equal(count(`SELECT count(*) FROM programacion_componentes_cohorte s JOIN cohortes_apertura c ON c.id=s.cohorte_id
+    WHERE s.fecha_inicio<c.fecha_inicio_clases OR s.fecha_fin>c.fecha_fin_clases OR s.fecha_inicio>s.fecha_fin`), 0);
+  assert.equal(count(`SELECT count(*) FROM matricula_componentes_snepa g
+    JOIN programacion_componentes_cohorte s ON s.id=g.programacion_componente_id
+    WHERE s.fecha_fin>current_date`), 0, 'future modules must not already have grades');
+  checks.push('readable visible references, complete subject-specific media, matching curriculum totals and realistic module timelines');
   assert.equal(count('SELECT count(*) FROM usuarios WHERE activo'), 0);
   assert.equal(count("SELECT count(*) FROM usuarios WHERE password_hash <> '!DEMO-LOGIN-DISABLED!'"), 0);
   assert.equal(count('SELECT count(*) FROM roles_permisos'), 0);
@@ -109,6 +130,41 @@ try {
     JOIN cohortes_apertura c ON c.id=i.cohorte_id JOIN programas_academicos p ON p.id=c.programa_id
     WHERE p.codigo_interno='EXISTING' AND o.tipo='ACADEMICO'`), 0);
   checks.push('new existing zero-price hidden career receives 60 records without changing its definition or curriculum');
+
+  query(`INSERT INTO programas_academicos(codigo_interno,nombre,slug,categoria,subtipo,area_conocimiento_id,
+    horas_totales,titulo_o_certificado_otorgado,imagen_portada_url)
+    SELECT '001-CCNA-NIC','Original networking diploma','original-ccna','EDUCACION_PERMANENTE',
+      'DIPLOMADO_PROFESIONAL',id,40,'Original diploma','/uploads/original-cover.jpg'
+    FROM areas_conocimiento WHERE slug='existing-area';`);
+  const originalFields=query(`SELECT to_jsonb(p)-'imagen_portada_url'-'video_promo_url'
+    FROM programas_academicos p WHERE codigo_interno='001-CCNA-NIC'`).stdout;
+  query(enabled+load);
+  assert.equal(query(`SELECT to_jsonb(p)-'imagen_portada_url'-'video_promo_url'
+    FROM programas_academicos p WHERE codigo_interno='001-CCNA-NIC'`).stdout,originalFields);
+  assert.equal(query("SELECT imagen_portada_url FROM programas_academicos WHERE codigo_interno='001-CCNA-NIC'").stdout.trim(),'/uploads/original-cover.jpg');
+  assert.match(query("SELECT video_promo_url FROM programas_academicos WHERE codigo_interno='001-CCNA-NIC'").stdout,/youtube\.com\/watch/);
+  checks.push('known original IT offering retains its existing cover and every non-media field while a missing video is added');
+
+  query('CREATE DATABASE demo_replace;');
+  query(schema,'demo_replace');
+  const legacy=spawnSync('git',['show','08a6999:database/demo_bulk_load.sql'],
+    {cwd:fileURLToPath(root),encoding:'utf8',maxBuffer:4*1024*1024});
+  assert.equal(legacy.status,0,legacy.stderr);
+  query(enabled+legacy.stdout,'demo_replace');
+  const legacySnapshot=snapshot('demo_replace');
+  const unwrap=sql=>{
+    assert.equal((sql.match(/^BEGIN;$/gm)||[]).length,1);
+    assert.equal((sql.match(/^COMMIT;$/gm)||[]).length,1);
+    return sql.replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');
+  };
+  const rollbackBody=unwrap(readFileSync(new URL('database/demo_bulk_rollback.sql',root),'utf8'));
+  const replacement="SET demo.allow_remove='yes';\n"+enabled+'BEGIN;\n'+rollbackBody+'\n'+unwrap(load)+'\n';
+  assert.match(query(replacement+"DO $$ BEGIN RAISE EXCEPTION 'replacement failure'; END $$; COMMIT;",'demo_replace',false).stderr,/replacement failure/);
+  assert.deepEqual(snapshot('demo_replace'),legacySnapshot);
+  query(replacement+'COMMIT;','demo_replace');
+  assert.equal(count("SELECT count(*) FROM cohortes_apertura WHERE codigo_cohorte ~ '^DEMO-[a-f0-9]{32}-[123]$'",'demo_replace'),0);
+  assert.equal(count('SELECT count(*) FROM programas_academicos','demo_replace'),32);
+  checks.push('atomic v1 removal plus v2 replacement succeeds, and a failed replacement restores the complete old dataset');
 
   query('CREATE DATABASE demo_rollback; CREATE DATABASE demo_outdated;');
   query(schema, 'demo_rollback');

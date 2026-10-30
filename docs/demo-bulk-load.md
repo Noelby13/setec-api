@@ -10,6 +10,10 @@ For an already loaded broken version 2, [`database/demo_uuid_repair.sql`](../dat
 
 `node --import tsx scripts/demo-uuid-repair.integration.mjs` checks the archived broken load, actual API-schema failure, in-place repair, exact inverse-mapped row preservation, original data and receipt sequence preservation, precise restoration of FK definitions, later/composite/self references, typed classroom identities, late-failure rollback and repeat-load no-ops. Affected immutable certificates, previews, sessions or historical exports stop the repair; unrelated historical exports remain byte-for-byte unchanged. Temporary FK deferral is validated and restored in the same transaction; no guard or trigger is disabled.
 
+The authorized local repair was applied on 2026-10-30. It corrected 28,272 entity IDs and validated all 28,487 distinct stored UUID values/references. Before commit, inverse projections verified that all 34,169 rows retained their nonidentity data; all 81 FK definitions/flags and receipt snapshots/numbers/timestamps/sequence were unchanged. Local execution used bounded exclusive locks before preflight to prevent concurrent writes during maintenance. All 35 program detail routes and all 35 curriculum routes returned HTTP200 afterward, with no validation errors. The private pre-repair backup is `.demo-uuid-backups-NSlGuP/before-uuid-repair.dump`, SHA256 `eb959c34f74dbde30402875dca8db524b0e6a1aa1b3adf2a6697546fd96b3319`. Counts, readable labels, names, academic/financial content and media remain unchanged.
+
+Independent read-only verification repeated the complete bound-column inverse projection, original 225-row hashes, all identities/references, FK definitions and representative actual API calls successfully. The parent repeated the reported original/corrected-ID lookup. No full browser journey was repeated; previously opened links must be reopened from the refreshed catalog because their IDs changed. No frontend or API validator was weakened or modified.
+
 ## What the data looks like
 
 | Visible field | Example |

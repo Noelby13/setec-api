@@ -128,7 +128,7 @@ test('configured account and course overrides remain authoritative in preview an
   const result = await VirtualClassroomService.createExport([scheduleId],'users_csv',actor);
   assert.match(result.content.toString('utf8'),/edited\.user,Edited,Learner,edited@example\.test/);
   const courseExport = await VirtualClassroomService.createExport([scheduleId],'courses_csv',actor);
-  assert.match(courseExport.content.toString('utf8'),/PEP-1,Nombre revisado,Resumen revisado,1/);
+  assert.match(courseExport.content.toString('utf8'),/PEP-1,Nombre revisado,Resumen revisado\r\n/);
 });
 
 test('a conflicting saved username remains visible and blocks export instead of being replaced', async () => {

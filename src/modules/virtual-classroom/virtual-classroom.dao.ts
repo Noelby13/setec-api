@@ -1,9 +1,10 @@
 import { pool, DbClient } from '../../db/pool';
 
 export class VirtualClassroomDAO {
-  static async candidates(filters: { from?: string; to?: string; programaId?: string; cohorteId?: string; estadoCohorte?: string; category?: string; defaultOperationalStates: boolean; userId: string; teacherOnly: boolean }) {
+  static async candidates(filters: { from?: string; to?: string; programaId?: string; cohorteId?: string; estadoCohorte?: string; category?: string; areaId?: string; defaultOperationalStates: boolean; userId: string; teacherOnly: boolean }) {
     const result = await pool.query(`
       SELECT DISTINCT p.id AS programa_id, p.nombre AS programa_nombre,
+        area.id AS area_id, area.nombre AS area_nombre,
         c.id AS cohorte_id, c.codigo_cohorte,
         pcc.id AS schedule_id, cc.nombre AS componente_nombre, pcc.fecha_inicio, pcc.fecha_fin,
         pa.nombres || ' ' || pa.apellidos AS docente_nombre,
@@ -12,6 +13,7 @@ export class VirtualClassroomDAO {
       FROM programacion_componentes_cohorte pcc
       JOIN cohortes_apertura c ON c.id=pcc.cohorte_id
       JOIN programas_academicos p ON p.id=c.programa_id
+      JOIN areas_conocimiento area ON area.id=p.area_conocimiento_id
       JOIN componentes_curriculares cc ON cc.id=pcc.componente_id
       LEFT JOIN personal_academico pa ON pa.id=pcc.docente_titular_id
       LEFT JOIN virtual_classroom_courses current_course ON current_course.schedule_id=pcc.id
@@ -31,25 +33,31 @@ export class VirtualClassroomDAO {
       ORDER BY p.nombre,c.codigo_cohorte,pcc.fecha_inicio,cc.nombre`,
       [filters.from ?? null, filters.to ?? null, filters.programaId ?? null, filters.cohorteId ?? null,
         filters.estadoCohorte ?? null, filters.defaultOperationalStates, filters.teacherOnly, filters.userId]);
+    const areaCounts = new Map<string, { id: string; nombre: string; course_count: number }>();
     const categoryCounts = new Map<string, number>();
     for (const row of result.rows) {
+      const area = areaCounts.get(row.area_id) ?? { id: row.area_id, nombre: row.area_nombre, course_count: 0 };
+      area.course_count += 1;
+      areaCounts.set(row.area_id, area);
       const value = String(row.effective_category ?? '1').trim();
       categoryCounts.set(value,(categoryCounts.get(value) ?? 0) + 1);
     }
-    const filteredRows = filters.category === undefined ? result.rows : result.rows.filter(row =>
-      String(row.effective_category ?? '1').trim() === filters.category);
+    const filteredRows = result.rows.filter(row =>
+      (filters.areaId === undefined || row.area_id === filters.areaId) &&
+      (filters.category === undefined || String(row.effective_category ?? '1').trim() === filters.category));
     const programs = new Map<string, { id: string; nombre: string }>();
     const cohorts = new Map<string, { id: string; programa_id: string; codigo_cohorte: string; estado_cohorte: string }>();
     const schedules = filteredRows.map(row => {
       programs.set(row.programa_id, { id: row.programa_id, nombre: row.programa_nombre });
       cohorts.set(row.cohorte_id, { id: row.cohorte_id, programa_id: row.programa_id, codigo_cohorte: row.codigo_cohorte, estado_cohorte: row.estado_cohorte });
       return { id: row.schedule_id, cohorte_id: row.cohorte_id, programa_id: row.programa_id,
+        programa_nombre: row.programa_nombre, area_id: row.area_id, area_nombre: row.area_nombre,
         componente_nombre: row.componente_nombre, codigo_cohorte: row.codigo_cohorte,
         fecha_inicio: row.fecha_inicio, fecha_fin: row.fecha_fin, docente_nombre: row.docente_nombre,
         actas_notas_cerradas: row.actas_notas_cerradas, estado_cohorte: row.estado_cohorte,
         category: String(row.effective_category ?? '1').trim() };
     });
-    return { programs: [...programs.values()], cohorts: [...cohorts.values()], schedules,
+    return { areas: [...areaCounts.values()], programs: [...programs.values()], cohorts: [...cohorts.values()], schedules,
       categories: [...categoryCounts].map(([value,course_count]) => ({ value,course_count })) };
   }
 
@@ -58,6 +66,7 @@ export class VirtualClassroomDAO {
       SELECT pcc.id AS schedule_id,pcc.cohorte_id,pcc.componente_id,pcc.fecha_inicio,pcc.fecha_fin,
         pcc.actas_notas_cerradas,cc.nombre AS componente_nombre,cc.codigo AS componente_codigo,
         c.codigo_cohorte,p.id AS programa_id,p.nombre AS programa_nombre,
+        area.id AS area_id,area.nombre AS area_nombre,
         pcc.codigo_aula_virtual_externa,
         cm.id AS course_mapping_id,cm.shortname,cm.category,cm.teacher_role,cm.fullname AS fullname_override,cm.summary AS summary_override,
         pa.id AS teacher_id,pa.nombres AS teacher_firstname,pa.apellidos AS teacher_lastname,
@@ -66,6 +75,7 @@ export class VirtualClassroomDAO {
       FROM programacion_componentes_cohorte pcc
       JOIN cohortes_apertura c ON c.id=pcc.cohorte_id
       JOIN programas_academicos p ON p.id=c.programa_id
+      JOIN areas_conocimiento area ON area.id=p.area_conocimiento_id
       JOIN componentes_curriculares cc ON cc.id=pcc.componente_id
       LEFT JOIN virtual_classroom_courses cm ON cm.schedule_id=pcc.id
       LEFT JOIN personal_academico pa ON pa.id=pcc.docente_titular_id

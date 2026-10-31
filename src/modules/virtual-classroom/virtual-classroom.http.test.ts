@@ -45,8 +45,17 @@ test('category is validated and forwarded unchanged through candidates, preview,
   assert.equal((await http.request('/api/virtual-classroom/candidates?category=%20', 'GET', undefined, token)).status,400);
   assert.equal((await http.request('/api/virtual-classroom/exports/preview','POST',{schedule_ids:ids,category:'00123'},token)).status,200);
   assert.equal((await http.request('/api/virtual-classroom/exports','POST',{schedule_ids:ids,format:'users_csv',category:'00123'},token)).status,200);
-  assert.deepEqual(calls[0],['preview',ids,'00123']);
-  assert.deepEqual(calls[1],['export',ids,'users_csv',calls[1][3],'00123']);
+  assert.deepEqual(calls[0],['preview',ids,'00123',undefined]);
+  assert.deepEqual(calls[1],['export',ids,'users_csv',calls[1][3],'00123',undefined]);
+  const areaId = '00000000-0000-4000-8000-000000000071';
+  assert.equal((await http.request(`/api/virtual-classroom/candidates?area_id=${areaId}`, 'GET', undefined, token)).status, 200);
+  assert.equal((await http.request('/api/virtual-classroom/candidates?area_id=invalid', 'GET', undefined, token)).status, 400);
+  assert.equal((await http.request('/api/virtual-classroom/exports/preview', 'POST', { schedule_ids: ids, area_id: areaId }, token)).status, 200);
+  assert.deepEqual(calls.at(-1), ['preview', ids, undefined, areaId]);
+  assert.equal((await http.request('/api/virtual-classroom/exports', 'POST', { schedule_ids: ids, format: 'courses_csv', area_id: areaId }, token)).status, 200);
+  assert.deepEqual(calls.at(-1), ['export', ids, 'courses_csv', calls.at(-1)[3], undefined, areaId]);
+  assert.equal((await http.request('/api/virtual-classroom/exports', 'POST', { schedule_ids: ids, format: 'courses_csv', area_id: 'invalid' }, token)).status, 400);
+
 });
 
 test('virtual classroom routes require an authenticated user and expose candidates', async () => {

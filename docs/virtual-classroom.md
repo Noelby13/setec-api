@@ -8,7 +8,7 @@ Apply `database/migrations/20261029_virtual_classroom.sql` to an existing instal
 
 ## Candidate selection and mapping
 
-`GET /api/virtual-classroom/candidates` accepts optional `estado_cohorte`, `programa_id`, and `cohorte_id` query parameters. Without a state or legacy date filter, it returns cohorts in `INSCRIPCION_ABIERTA`, `QUORUM_ALCANZADO_COBRANDO`, or `EN_EJECUCION`, regardless of schedule dates. An explicit `estado_cohorte` selects that exact existing cohort state. For older API clients, supplying `from` or `to` retains the prior date-window behavior and does not implicitly filter states; an explicit state still applies. Returned cohort and schedule rows include `estado_cohorte`. A `COHORTE_GESTIONAR` user sees the matching schedule set; grade users may inspect schedules permitted by their role, and teachers see only their assigned schedules.
+`GET /api/virtual-classroom/candidates` accepts optional `area_id` (academic area UUID), `estado_cohorte`, `programa_id`, and `cohorte_id` query parameters. Without a state or legacy date filter, it returns cohorts in `INSCRIPCION_ABIERTA`, `QUORUM_ALCANZADO_COBRANDO`, or `EN_EJECUCION`, regardless of schedule dates. An explicit `estado_cohorte` selects that exact existing cohort state. For older API clients, supplying `from` or `to` retains the prior date-window behavior and does not implicitly filter states; an explicit state still applies. Returned cohort and schedule rows include `estado_cohorte`. A `COHORTE_GESTIONAR` user sees the matching schedule set; grade users may inspect schedules permitted by their role, and teachers see only their assigned schedules.
 
 Before generation, configure each component/cohort Moodle course:
 
@@ -42,7 +42,7 @@ Only `COHORTE_GESTIONAR` may edit mappings and generate files. Usernames and cou
 
 The preview endpoint is `POST /api/virtual-classroom/exports/preview` with `{ "schedule_ids": ["..."] }`. Resolve every returned issue before `POST /api/virtual-classroom/exports` with the same schedule IDs and `format` set to `xlsx`, `users_csv`, or `courses_csv`.
 
-The workbook contains `Usuarios` and `Cursos`. User CSV headers include `username,firstname,lastname,email` and one `courseN,roleN` pair per selected schedule. Course CSV headers are `shortname,fullname,summary,category`. Accents are preserved and CSV values use standard quoted escaping. `GET /api/virtual-classroom/exports` lists the actor's generated batch metadata and content snapshot; generated content is stored privately for audit.
+The workbook contains `Usuarios` and `Cursos`. User CSV headers include `username,firstname,lastname,email` and one `courseN,roleN` pair per selected schedule. Course CSV headers are `shortname,fullname,summary`. Accents are preserved and CSV values use standard quoted escaping. `GET /api/virtual-classroom/exports` lists the actor's generated batch metadata and content snapshot; generated content is stored privately for audit.
 
 ## Grade return
 
@@ -54,10 +54,16 @@ Every valid preview is bound to the current user, schedule, original file bytes,
 
 Run `node --import tsx --test src/modules/virtual-classroom/*.test.ts`, `npm test`, and `npm run build`. `npm run test:virtual-classroom:integration` uses only a cached local `postgres:16-alpine` Docker image, a unique disposable container/database, and a scratch directory. It never pulls images or reads `.env`; it removes only resources created by that run.
 
-## Moodle category scope
+## Academic area scope
+
+The admin export page uses the authoritative `areas_conocimiento` relationship of each academic program. Candidates include `areas: [{id,nombre,course_count}]` and schedule `area_id`, `area_nombre`, `programa_nombre`. Area counts use the other program/cohort/state filters and teacher scope, before applying `area_id`. Selecting an area selects all its visible courses; individual, per-program and select-all/clear controls can refine the selection. The page groups by area and program, with cohort, operational state, teacher and readable dates. The 100-schedule limit never silently truncates a selection.
+
+Pass the same optional UUID `area_id` to candidates, export preview and export creation. Preview and download re-read academic areas and reject any mixed or reassigned selection with 409 before saving export history. Area scope is included in the audit snapshot. Excel contains only `Usuarios` and `Cursos`; both course file formats omit `category`. User course/role pairs remain unchanged. The page has no category control or grade links; grade imports remain in Notas. When saving reviewed courses, the page supplies the academic area name through the existing internal mapping field, which is never added to course files.
+
+## Legacy Moodle category API compatibility
 
 `GET /api/virtual-classroom/candidates` accepts optional `category` alongside program, cohort and state filters. Category is the exact trimmed Moodle category value, not an internal academic classification. The response includes `categories` (`value`, `course_count`) before applying the category filter, and each schedule carries its effective `category`: saved course setting, same-program proposal default, or `1`.
 
 Include the same optional `category` in `POST /exports/preview` and `POST /exports`, together with the selected `schedule_ids` (and export `format`). The server rebuilds the current assignments and returns 409 when any selected course belongs to another category or was reassigned after review. It does not create an export batch for that rejected request. Without `category`, existing selection/export behavior remains unchanged.
 
-The page selects all visible courses when a category is chosen; program, cohort and state filters still apply. Users can refine that selection before review. The existing limit of 100 schedules is enforced without silently truncating a category.
+The optional legacy category API remains available for existing clients. The admin page sends `area_id` instead of `category`. Area and legacy category constraints are both enforced if a client explicitly supplies both.

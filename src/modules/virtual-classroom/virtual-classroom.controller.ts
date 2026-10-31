@@ -14,7 +14,7 @@ export class VirtualClassroomController {
   }
 
   static async previewExport(req: Request,res: Response,next: NextFunction) {
-    try { res.json({ data: await VirtualClassroomService.previewExport(req.body.schedule_ids,req.body.category) }); }
+    try { res.json({ data: await VirtualClassroomService.previewExport(req.body.schedule_ids,req.body.category,req.body.area_id) }); }
     catch (error) { next(error); }
   }
 
@@ -30,7 +30,7 @@ export class VirtualClassroomController {
 
   static async createExport(req: Request,res: Response,next: NextFunction) {
     try {
-      const result = await VirtualClassroomService.createExport(req.body.schedule_ids,req.body.format,actor(req),req.body.category);
+      const result = await VirtualClassroomService.createExport(req.body.schedule_ids,req.body.format,actor(req),req.body.category,req.body.area_id);
       res.status(200).setHeader('Content-Type',result.contentType)
         .setHeader('Content-Disposition',`attachment; filename="${result.filename}"`)
         .setHeader('X-Export-Id',result.export.id).send(result.content);

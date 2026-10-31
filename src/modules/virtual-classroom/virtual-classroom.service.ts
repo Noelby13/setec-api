@@ -7,7 +7,7 @@ import type { AuthUserPayload } from '../../middlewares/auth.middleware';
 import { VirtualClassroomDAO } from './virtual-classroom.dao';
 
 const USER_HEADERS = ['username', 'firstname', 'lastname', 'email'];
-const COURSE_HEADERS = ['shortname', 'fullname', 'summary', 'category'];
+const COURSE_HEADERS = ['shortname', 'fullname', 'summary'];
 const contentType = (format: string) => format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv; charset=utf-8';
 
 function csvCell(value: unknown): string {
@@ -61,7 +61,7 @@ function gradeStateFingerprint(rows: any[]) {
 }
 
 export class VirtualClassroomService {
-  static async candidates(query: { from?: string; to?: string; programa_id?: string; cohorte_id?: string; estado_cohorte?: string; category?: string }, user: AuthUserPayload) {
+  static async candidates(query: { from?: string; to?: string; programa_id?: string; cohorte_id?: string; estado_cohorte?: string; category?: string; area_id?: string }, user: AuthUserPayload) {
     const category = validatedCategory(query.category);
     const hasLegacyDateFilter = query.from !== undefined || query.to !== undefined;
     let start: string | undefined;
@@ -77,14 +77,17 @@ export class VirtualClassroomService {
     const grades = user.rol === 'SUPER_ADMIN' || user.permisos.includes('NOTA_IMPORTAR');
     if (!admin && !grades) throw new AppError('Se requiere permiso COHORTE_GESTIONAR o NOTA_IMPORTAR.', 403);
     return VirtualClassroomDAO.candidates({ from: start, to: end, programaId: query.programa_id,
-      cohorteId: query.cohorte_id, estadoCohorte: query.estado_cohorte, category,
+      cohorteId: query.cohorte_id, estadoCohorte: query.estado_cohorte, category, areaId: query.area_id,
       defaultOperationalStates: !hasLegacyDateFilter && query.estado_cohorte === undefined,
       userId: user.id, teacherOnly: !admin && user.rol === 'DOCENTE' });
   }
 
-  static async previewExport(scheduleIds: string[], requestedCategory?: string) {
+  static async previewExport(scheduleIds: string[], requestedCategory?: string, areaId?: string) {
     const categoryFilter = validatedCategory(requestedCategory);
     const schedules = validatedScheduleIds(scheduleIds, (await VirtualClassroomDAO.exportContext(scheduleIds)).rows);
+    if (areaId !== undefined && schedules.some(schedule => schedule.area_id !== areaId)) {
+      throw new AppError('La selección incluye cursos fuera del área solicitada o su área cambió; revise nuevamente la selección.', 409);
+    }
     const defaults = new Map<string, any>((await VirtualClassroomDAO.proposalDefaults(scheduleIds)).rows.map((row: any) => [row.schedule_id,row]));
     const generatedCodes = new Map<string,string[]>();
     for (const schedule of schedules) {
@@ -130,7 +133,7 @@ export class VirtualClassroomService {
         issues.push({ code:'LEGACY_COURSE_CODE_CONFLICT',message:'El código Moodle ya pertenece a otra programación.',schedule_id:schedule.schedule_id });
       }
       return { schedule_id: schedule.schedule_id, shortname, fullname, summary, category, teacher_role: teacherRole,
-        confirmed:Boolean(schedule.course_mapping_id),
+        confirmed:Boolean(schedule.course_mapping_id), area_id: schedule.area_id, area_nombre: schedule.area_nombre, programa_nombre: schedule.programa_nombre,
         fecha_inicio: schedule.fecha_inicio, fecha_fin: schedule.fecha_fin };
     });
     if (categoryFilter !== undefined && courses.some(course => course.category !== categoryFilter)) {
@@ -182,7 +185,8 @@ export class VirtualClassroomService {
       if (person.username) seen.add(person.username.toLowerCase());
     }
     return { courses, people: [...people.values()], issues,
-      ...(categoryFilter === undefined ? {} : { category: categoryFilter }) };
+      ...(categoryFilter === undefined ? {} : { category: categoryFilter }),
+      ...(areaId === undefined ? {} : { area_id: areaId }) };
   }
 
   static async configureAccount(personKey: string, config: { username: string; firstname?: string; lastname?: string; email?: string }, actor: AuthUserPayload) {
@@ -212,9 +216,9 @@ export class VirtualClassroomService {
     return (await VirtualClassroomDAO.upsertCourse(scheduleId,config,actor.id)).rows[0];
   }
 
-  static async createExport(scheduleIds: string[], format: 'xlsx'|'users_csv'|'courses_csv', actor: AuthUserPayload, requestedCategory?: string) {
+  static async createExport(scheduleIds: string[], format: 'xlsx'|'users_csv'|'courses_csv', actor: AuthUserPayload, requestedCategory?: string, areaId?: string) {
     const categoryFilter = validatedCategory(requestedCategory);
-    const preview = await this.previewExport(scheduleIds,categoryFilter);
+    const preview = await this.previewExport(scheduleIds,categoryFilter,areaId);
     if (preview.issues.length) throw new AppError('Resuelva los problemas de validación antes de generar los archivos.', 400, preview.issues);
     const users = new Map<string, any>();
     for (const person of preview.people) {
@@ -225,7 +229,7 @@ export class VirtualClassroomService {
     const userHeaders = [...USER_HEADERS, ...Array.from({ length: scheduleIds.length }, (_,i) => [`course${i+1}`,`role${i+1}`]).flat()];
     const userRows = [...users.values()].map(person => [person.username,person.firstname,person.lastname,person.email,
       ...scheduleIds.flatMap(id => { const match = person.courses.find((c: any) => c.schedule_id === id); return [match?.shortname ?? '',match?.role ?? '']; })]);
-    const courseRows = preview.courses.map(course => [course.shortname,course.fullname,course.summary,course.category]);
+    const courseRows = preview.courses.map(course => [course.shortname,course.fullname,course.summary]);
     let content: Buffer;
     if (format === 'users_csv') content = csv([userHeaders,...userRows]);
     else if (format === 'courses_csv') content = csv([COURSE_HEADERS,...courseRows]);

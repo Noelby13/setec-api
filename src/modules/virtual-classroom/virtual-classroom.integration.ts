@@ -129,6 +129,55 @@ async function main() {
     await q("UPDATE virtual_classroom_courses SET updated_at=NOW()+INTERVAL '1 minute' WHERE schedule_id=$1",[schedules[0].id]);
     checks.push('category options count unconfigured proposals and exact stored values before filtering; filtered scopes and all three exports exclude other-category courses, and stale category assignment conflicts without export history');
     checks.push('candidate query preserves program/cohort/component identity and accent text');
+    const otherArea = await one("INSERT INTO areas_conocimiento(nombre,slug) VALUES ('Otra área','vclass-other-area') RETURNING id");
+    const otherProgram = await one("INSERT INTO programas_academicos(codigo_interno,nombre,slug,categoria,subtipo,area_conocimiento_id,horas_totales,titulo_o_certificado_otorgado) VALUES ('VCLASS-OTHER','Otro programa','vclass-other-program','EDUCACION_PERMANENTE','CURSO_EXTENSION',$1,8,'Certificado') RETURNING id", [otherArea.id]);
+    const otherComponent = await one("INSERT INTO componentes_curriculares(programa_id,codigo,nombre,horas) VALUES ($1,'OTHER','Otro curso',8) RETURNING id", [otherProgram.id]);
+    const otherCohort = await one(`INSERT INTO cohortes_apertura(programa_id,sede_id,modalidad,codigo_cohorte,numero_edicion,coordinador_id,
+      fecha_inicio_inscripcion,fecha_fin_inscripcion,fecha_inicio_clases,fecha_fin_clases,precio_total_cohorte)
+      VALUES($1,$2,'PRESENCIAL','VCLASS-OTHER',1,$3,'2026-10-01','2026-10-20','2026-11-01','2027-01-01',0) RETURNING id`, [otherProgram.id,campus.id,teacher.id]);
+    const otherSchedule = await one("INSERT INTO programacion_componentes_cohorte(cohorte_id,componente_id,docente_titular_id,fecha_inicio,fecha_fin) VALUES($1,$2,$3,'2026-11-01','2026-11-30') RETURNING id", [otherCohort.id,otherComponent.id,teacher.id]);
+    await q("INSERT INTO virtual_classroom_courses(schedule_id,shortname,category,teacher_role,updated_by) VALUES($1,'OTHER-AREA','00123','editingteacher',$2)", [otherSchedule.id,admin.id]);
+    const areaQuery = { from:'2026-10-29',to:'2026-12-01',area_id:area.id };
+    const areaCandidates = await VirtualClassroomService.candidates(areaQuery, actor);
+    assert.equal(areaCandidates.areas.length, 2);
+    assert.equal(areaCandidates.areas.find((item:any) => item.id === area.id)?.course_count, 2);
+    assert.deepEqual(new Set(areaCandidates.schedules.map((row:any) => row.id)), new Set(schedules.map(row => row.id)));
+    assert.ok(areaCandidates.schedules.every((row:any) => row.programa_nombre === 'Programa Ágil' && row.area_nombre === 'VClass test'));
+    assert.equal((await VirtualClassroomService.candidates({...areaQuery,programa_id:otherProgram.id},actor)).schedules.length, 0);
+    assert.equal((await VirtualClassroomService.candidates(areaQuery,{...actor,id:linkedUser.id,rol:'DOCENTE',permisos:['NOTA_IMPORTAR']})).schedules.length, 0);
+    for (const format of ['users_csv','courses_csv','xlsx'] as const) {
+      const exported = await VirtualClassroomService.createExport(schedules.map(row => row.id),format,actor,undefined,area.id);
+      if (format === 'xlsx') {
+        const book = new ExcelJS.Workbook();
+        await book.xlsx.load(exported.content);
+        assert.deepEqual((book.getWorksheet('Cursos')!.getRow(1).values as ExcelJS.CellValue[]).slice(1), ['shortname','fullname','summary']);
+        assert.equal(book.getWorksheet('Cursos')!.rowCount, 3);
+        assert.doesNotMatch(JSON.stringify(book.getWorksheet('Usuarios')!.getSheetValues()), /OTHER-AREA/);
+      } else {
+        assert.doesNotMatch(exported.content.toString(), /OTHER-AREA/);
+        if (format === 'courses_csv') assert.equal(exported.content.toString().split('\r\n')[0], '\uFEFFshortname,fullname,summary');
+      }
+    }
+    const areaState = async () => JSON.stringify(await q(`SELECT (SELECT count(*) FROM virtual_classroom_exports) AS exports,
+      (SELECT json_agg(p ORDER BY id) FROM programas_academicos p) AS programs,
+      (SELECT json_agg(n ORDER BY id) FROM matricula_componentes_snepa n) AS grades`));
+    const beforeMixed = await areaState();
+    await assert.rejects(VirtualClassroomService.createExport([schedules[0].id,otherSchedule.id],'xlsx',actor,undefined,area.id),(error:any) => error.statusCode === 409);
+    assert.equal(await areaState(), beforeMixed);
+    await VirtualClassroomService.previewExport([schedules[0].id],undefined,area.id);
+    await q('UPDATE programas_academicos SET area_conocimiento_id=$1 WHERE id=$2',[otherArea.id,program.id]);
+    const beforeReassigned = await areaState();
+    await assert.rejects(VirtualClassroomService.createExport([schedules[0].id],'courses_csv',actor,undefined,area.id),(error:any) => error.statusCode === 409);
+    assert.equal(await areaState(), beforeReassigned);
+    await q('UPDATE programas_academicos SET area_conocimiento_id=$1 WHERE id=$2',[area.id,program.id]);
+    await q('DELETE FROM virtual_classroom_courses WHERE schedule_id=$1',[otherSchedule.id]);
+    await q('DELETE FROM programacion_componentes_cohorte WHERE id=$1',[otherSchedule.id]);
+    await q('DELETE FROM cohortes_apertura WHERE id=$1',[otherCohort.id]);
+    await q('DELETE FROM componentes_curriculares WHERE id=$1',[otherComponent.id]);
+    await q('DELETE FROM programas_academicos WHERE id=$1',[otherProgram.id]);
+    await q('DELETE FROM areas_conocimiento WHERE id=$1',[otherArea.id]);
+    checks.push('authoritative academic area scopes candidates and all formats independently of legacy categories; mixed/reassigned areas reject without altering export history, programs or grades');
+
     const stateFixtures:any[]=[];
     for (const [index,state] of ['INSCRIPCION_ABIERTA','QUORUM_ALCANZADO_COBRANDO','EN_EJECUCION','PLANIFICADA','CANCELADA'].entries()) {
       const cohort=await one(`INSERT INTO cohortes_apertura(programa_id,sede_id,modalidad,codigo_cohorte,numero_edicion,coordinador_id,
@@ -159,11 +208,12 @@ async function main() {
     assert.equal(preview.people.find((person: any) => person.kind==='student').courses.length,2);
     assert.equal(preview.people.find((person: any) => person.kind==='student').person_key,`user:${linkedUser.id}`);
     assert.ok(preview.issues.every((issue: any) => issue.code!=='PERSON_DATA_MISSING'));
+    const exportCountBeforeUnfiltered = Number((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count);
     const exportResult = await VirtualClassroomService.createExport(schedules.map(item => item.id),'users_csv',actor);
     const exported = exportResult.content.toString('utf8');
     assert.match(exported,/username,firstname,lastname,email,course1,role1,course2,role2/);
     assert.match(exported,/lucia\.moodle,Lucía,Álvarez/);
-    assert.equal((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count,4);
+    assert.equal((await one('SELECT count(*)::int AS count FROM virtual_classroom_exports')).count,exportCountBeforeUnfiltered + 1);
     checks.push('active-only roster consolidation produces one accented account row across two courses');
 
     const collisionPeople:any[]=[];
